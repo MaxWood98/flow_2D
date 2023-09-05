@@ -1,0 +1,6 @@
+io/
+dev/
+.vscode/
+obj/
+src/old/
+*.exe
