@@ -30,7 +30,7 @@ if (options%csdisp) then
     write(*,*)
     write(*,*)'+--------------------------------------------+'
     write(*,*)'|            2D Euler Flow Solver            |'
-    write(*,*)'|         Version 2.1.2 || 23/08/2023        |'
+    write(*,*)'|         Version 2.2.0 || 11/09/2023        |'
     write(*,*)'|                 Max Wood                   |'
     write(*,*)'|           University of Bristol            |'
     write(*,*)'|    Department of Aerospace Engineering     |'

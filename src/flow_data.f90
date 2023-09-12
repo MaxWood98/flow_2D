@@ -21,7 +21,7 @@ real(dp) :: pi = 4.0d0*atan(1.0d0)
 type mesh_data
     integer(in) :: ncell,nedge,nvtx,ncshare,npwallcell,npwalledge,nzone_outflow
     integer(in) :: bc_active(7)
-    real(dp) :: chordx
+    real(dp) :: chordx,mindt
     integer(in), dimension(:), allocatable :: edge_1,edge_2,edgeonwcell,cellonwall,cell_mz
     integer(in), dimension(:), allocatable :: cell_left,cell_right,cell_nedge,cell_nedgei,cell_nedgeiw,cell_link 
     integer(in), dimension(:), allocatable :: zone_left,zone_right,outflow_zone,nedge_of_zone
@@ -35,7 +35,7 @@ end type mesh_data
 type options_data
     character(len=:), allocatable :: iopath,optpath
     character(len=1) :: mflux_bc_type,wall_bc_type,ff_bc_type,init_state,ffexport_scale
-    logical :: csdisp,pptoggle,ffexporttoggle,damptsteps,evalMassflux
+    logical :: csdisp,pptoggle,ffexporttoggle,damptsteps,evalMassflux,force_fixed_pratio
     integer(in) :: ittlim,ittlim_min,avstencil_size,num_threads,nRKstage,ts_mode,psNsmooth
     integer(in) :: status,Mflux_relaxiter,massflux_niterav
     integer(in) :: RKstagediss(4)
@@ -47,10 +47,10 @@ end type options_data
 type flow_var_data
     integer(in) :: res_conv
     real(dp) :: Winf(4)
-    real(dp) :: uinf,vinf,velinf,t0inf,p0inf,rho0inf,mflow_in,A_in,A_out,mflux_in 
+    real(dp) :: uinf,vinf,velinf,t0inf,p0inf,rho0inf,mflow_in,A_in,A_out,mflux_in!,dt_in
     real(dp) :: pinf,cinf,rhoinf,tinf,machinf
     real(dp) :: mflux_pset,mflux_pset0,backp_pset
-    real(dp) :: rho_res,force_res,R,gam,vnset_of,mflux_error
+    real(dp) :: rho_res,force_res,R,gam,vnset_of,mflux_error!,mass_intake_total,time_total
     real(dp), dimension(:), allocatable :: rho,u,v,p,e,mach,cp,resid,vorticity,vel,temp,paverage
     real(dp), dimension(:), allocatable :: u_outflow,v_outflow,rho_outflow
     real(dp), dimension(:), allocatable :: u_outflow_t,v_outflow_t,rho_outflow_t

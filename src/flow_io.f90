@@ -72,8 +72,8 @@ do ii=1,nvtx
 end do
 close(11)
 if (options%csdisp) then
-    write(*,*) '   cells: ',ncell
-    write(*,*) '   edges: ',nedge
+    write(*,'(A,I0)') '    cells: ',ncell
+    write(*,'(A,I0)') '    edges: ',nedge
 end if 
 return 
 end subroutine flow_import_mesh
@@ -166,6 +166,9 @@ read(11,*) options%Mflux_toll
 read(11,*) !skip
 read(11,*) !skip
 read(11,*) options%backp_pratio
+read(11,*) !skip
+read(11,*) !skip
+read(11,*) options%force_fixed_pratio
 read(11,*) !skip
 read(11,*) !skip
 read(11,*) !skip

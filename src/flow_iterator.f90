@@ -1,8 +1,8 @@
 !Flow solver solution itteration module (parallel capable)
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 0.2.1
-!Updated: 21/08/23
+!Version: 0.2.2
+!Updated: 11/09/23
 
 !Module
 module flow_iterator_mod
@@ -27,9 +27,10 @@ type(flow_var_data) :: flowvars,flowvarsAV
 type(coeficient_data) :: fcoefs
 
 !Variables - Local 
-integer(in) :: cc,tt,fitt,nanflag,tr_idx,resconv
-real(dp) :: rho_res,res_sd,longres_sum,mfluxin
+integer(in) :: cc,tt,fitt,nanflag,tr_idx,resconv,itttgt
+real(dp) :: rho_res,res_sd,longres_sum,mindt,mflux_av
 real(dp) :: rhores_hist(options%ittlim),rhores_hist_av(options%ittlim),massfluxsten(options%massflux_niterav)
+real(dp) :: mass_in_total_iter(options%massflux_niterav),time_total_iter(options%massflux_niterav)
 type(mesh_data), dimension(:), allocatable :: mesh_par
 type(parallel_residual), dimension(:), allocatable :: fres_par
 type(coeficient_data), dimension(:), allocatable :: fcoefs_par
@@ -56,7 +57,7 @@ allocate(flowvars_par(options%num_threads))
 allocate(flowvarsAV_par(options%num_threads))
 do tt=1,options%num_threads
     call allocate_flow_variables(flowvars_par(tt),mesh_par(tt),fcoefs_par(tt),options)
-    call initialise_flow(options,flowvars_par(tt),flowvarsAV_par(tt),mesh_par(tt),fcoefs_par(tt),tt)
+    call initialise_flow(options,flowvars_par(tt),flowvarsAV_par(tt),mesh_par(tt),fcoefs_par(tt),0_in)
     allocate(fres_par(tt)%W(mesh_par(tt)%ncell,4))
     allocate(fres_par(tt)%W0(mesh_par(tt)%ncell,4))
     allocate(fres_par(tt)%R(mesh_par(tt)%ncell,4))
@@ -90,8 +91,10 @@ if (options%csdisp) then
 end if 
 flowvars%res_conv = 0
 if (options%csdisp) then
-    write(*,'(A,A,A,A,A,A)') '    ittn ','     res ','            cl ','             cd ','          Fsd ','          Rsd '
-    write(*,'(A)') '    ----------------------------------------------------------------------------'
+    write(*,'(A,A,A,A,A,A,A)') '    ittn ','     res ','            cl ','             cd ','            &
+    &mflux ','         Fsd ','         Rsd '
+    write(*,'(A)') '    -----------------------------------------------------------------------------------&
+    &---------'
 end if
 
 !Initialise forces 
@@ -107,6 +110,8 @@ rhores_hist_av(:) = 0.0d0
 !Initialise additional arrays 
 if (options%evalMassflux) then !Mass flux through inflow 
     massfluxsten(:) = 0.0d0 
+    mass_in_total_iter(:) = 0.0d0
+    time_total_iter(:) = 0.0d0
 end if 
 
 !Initialise parallel zones 
@@ -154,19 +159,29 @@ do fitt=1,options%ittlim
     call cell_spectral_radius(mesh_par,flowvars_par,tr_idx)
     !$OMP barrier
     call timestep_p(mesh_par,options,nanflag,tr_idx)
+    if (options%ts_mode == 0) then !Set global timestep if selected
+        mesh_par(tr_idx)%mindt = minval(mesh_par(tr_idx)%deltaT(:))
+        !$OMP single 
+        mindt = mesh_par(1)%mindt 
+        do tt=1,options%num_threads
+            if (mesh_par(tt)%mindt .LT. mindt) then 
+                mindt = mesh_par(tt)%mindt
+            end if 
+        end do 
+        do tt=1,options%num_threads
+            mesh_par(tt)%deltaT(:) = mindt
+        end do 
+        !$OMP end single 
+        !$OMP barrier
+    end if
 
     !Rk iterate 
     call rk_iterate_p(fres_par,fcoefs_par,mesh_par,flowvars_par,options,rho_res,tr_idx,fitt,nanflag)
     !$OMP barrier
 
-    !Evaluate any additional target properties 
-    if (options%evalMassflux) then !Mass flux through inflow 
-        call evaluate_inflow_mass_flux(flowvars_par,mesh_par,options,tr_idx)
-    end if
-
     !Process step ---
     !$OMP single 
-        
+
         !Gather force coeficients
         fcoefs%cl = 0.0d0 
         fcoefs%cd = 0.0d0 
@@ -175,10 +190,35 @@ do fitt=1,options%ittlim
             fcoefs%cd = fcoefs%cd + fcoefs_par(tt)%cd
         end do 
 
-        !Accumulate mass flux through inflow to stencil
-        if (options%evalMassflux) then !Mass flux through inflow 
-            mfluxin = sum(flowvars_par(:)%mflux_in)/real(options%num_threads,dp)
-            massfluxsten(mod(fitt,options%massflux_niterav)+1) = mfluxin
+        !Evaluate and accumulate mass flux through inflow regions to stencil
+        if (options%evalMassflux) then 
+
+            !Target itteration 
+            itttgt = mod(fitt,options%massflux_niterav) + 1
+
+            !Find average timestep this itteration
+            time_total_iter(itttgt) = 0.0d0 
+            do tt=1,options%num_threads
+                time_total_iter(itttgt) = time_total_iter(itttgt) + sum(mesh_par(tt)%deltaT(:))
+            end do 
+            time_total_iter(itttgt) = time_total_iter(itttgt)/real(mesh%ncell,dp)
+
+            !Total mass in on this itteration 
+            mass_in_total_iter(itttgt) = 0.0d0 
+            do tt=1,options%num_threads
+                mass_in_total_iter(itttgt) = mass_in_total_iter(itttgt) + flowvars_par(tt)%mflux_in*time_total_iter(itttgt)
+            end do 
+
+            !Evaluate mass flux over rolling time period 
+            flowvars%mflux_in = sum(mass_in_total_iter)/sum(time_total_iter)
+            
+            !Store in averaging array 
+            massfluxsten(itttgt) = flowvars%mflux_in
+
+            !Calculate average value 
+            mflux_av = sum(massfluxsten(:))/real(options%massflux_niterav,dp)
+        else
+            mflux_av = 0.0d0 
         end if 
         
         !Process step 
@@ -221,14 +261,15 @@ do fitt=1,options%ittlim
         !History display
         if (mod(fitt,100) == 0) then
             if (options%csdisp) then
-                write(*,'(A,A,A,A,A,A)') '    ittn ','     res ','            cl ','             cd ','          Fsd ',&
-                                         '          Rsd '
-                write(*,'(A)') '    ----------------------------------------------------------------------------'
+                write(*,'(A,A,A,A,A,A,A)') '    ittn ','     res ','            cl ','             cd ','            &
+                &mflux ','         Fsd ','         Rsd '
+                write(*,'(A)') '    -----------------------------------------------------------------------------------&
+                &---------'
             end if
         end if
         if (options%csdisp) then
-            write(*,'(I8,A,F10.6,A,F14.8,A,F14.8,A,F10.6,A,F10.6)') fitt,'  ',rho_res,'  ',fcoefs%cl,'  ',fcoefs%cd,'   ',&
-                flowvars%force_res,'   ',res_sd
+            write(*,'(I8,A,F10.6,A,F14.8,A,F14.8,A,F14.8,A,F10.6,A,F10.6)') fitt,'  ',rho_res,'  ',fcoefs%cl,'  ',fcoefs%cd&
+            ,'  ',mflux_av,'   ',flowvars%force_res,'   ',res_sd
         end if
 
         !Residual convergence check
@@ -344,6 +385,7 @@ do rk_stage=1,options%nRKstage
         mesh_par(tr_idx)%psensor_num(:) = 0.0d0
         mesh_par(tr_idx)%psensor_dnum(:) = 0.0d0
         mesh_par(tr_idx)%psensor(:) = 0.0d0
+        flowvars_par(tr_idx)%mflux_in = 0.0d0 
     end if
     !$OMP barrier
 
@@ -476,18 +518,6 @@ if ((mesh_par(tr_idx)%bc_active(7) == 1) .AND. (rk_stage == 1)) then
     flowvars_par(tr_idx)%u_outflow(:) = u_outflow(:)
     flowvars_par(tr_idx)%v_outflow(:) = v_outflow(:)
     flowvars_par(tr_idx)%rho_outflow(:) = rho_outflow(:)
-    ! if (iter == 1) then 
-    !     flowvars_par(tr_idx)%u_outflow(:) = u_outflow(:)
-    !     flowvars_par(tr_idx)%v_outflow(:) = v_outflow(:)
-    !     flowvars_par(tr_idx)%rho_outflow(:) = rho_outflow(:)
-    ! else
-    !     ! flowvars_par(tr_idx)%u_outflow(:) = flowvars_par(tr_idx)%u_outflow(:) + &
-    !     ! 0.125d0*(u_outflow(:) - flowvars_par(tr_idx)%u_outflow(:))
-    !     ! flowvars_par(tr_idx)%v_outflow(:) = flowvars_par(tr_idx)%v_outflow(:) + &
-    !     ! 0.125d0*(v_outflow(:) - flowvars_par(tr_idx)%v_outflow(:))
-    !     ! flowvars_par(tr_idx)%rho_outflow(:) = flowvars_par(tr_idx)%rho_outflow(:) + &
-    !     ! 0.125d0*(rho_outflow(:) - flowvars_par(tr_idx)%rho_outflow(:))
-    ! end if 
     !$OMP barrier
 end if 
 
@@ -754,11 +784,6 @@ do ii=1,mesh_par(tr_idx)%ncell
         nanflag = 1
     end if
 end do
-
-! !Set global timestep if selected
-! if (options%ts_mode == 0) then 
-!     mesh%deltaT(:) = minval(mesh%deltaT(:))
-! end if
 return 
 end subroutine timestep_p
 

@@ -1,8 +1,8 @@
 !Flow solver boundary conditions subroutines module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering 
-!Version: 0.5.1
-!Updated: 21/08/23
+!Version: 0.5.2
+!Updated: 11/09/23
 
 !Module
 module flow_boundary_cond_mod
@@ -586,9 +586,13 @@ type(mesh_data), dimension(:) :: mesh
 real(dp) :: rhoin,uin,vin,pin,cin,H,velinN,velin,velinf
 real(dp) :: Rm,a,b,c,cbp,cbm,cb,pwall
 real(dp) :: Mb,pb,rhob,ub,vb,eb,uninf,vninf,tinf,rhoinf,pinf
-real(dp) :: unin,vnin,utin,vtin
+real(dp) :: unin,vnin,utin,vtin,nx,ny
 real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
 real(dp) :: chm(4,4),chmi(4,4)
+
+!Cell normal vector with positive dot product with the velocity vector 
+nx = mesh(zr)%edge_nx(edge_idx)
+ny = mesh(zr)%edge_ny(edge_idx)
 
 !Internal primative vector
 rhoin = flowvars(zr)%rho(cr) 
@@ -672,6 +676,9 @@ else !Normal inflow -> switch based on mach number
         rhob = fdeltasb(1,1) + rhoinf
         pb = fdeltasb(4,1) + pinf
         eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
+
+        !Accumulate inflow mass flux 
+        flowvars(zr)%mflux_in = flowvars(zr)%mflux_in + rhob*(ub*nx + vb*ny)*mesh(zr)%edgelen(edge_idx)
 
         !Set boundary flux 
         Fleft(1) = rhob*ub
@@ -780,7 +787,7 @@ end subroutine stagnation_inflow_bc
 
 
 !Freestream inflow boundary condition subroutine =========================
-subroutine freestream_inflow_c(Fleft,Gleft,cr,zr,flowvars,mesh,edgidx)
+subroutine freestream_inflow_c(Fleft,Gleft,cr,zr,flowvars,mesh,options,edgidx)
 implicit none 
 
 !Variables - Import
@@ -788,6 +795,7 @@ integer(in) :: cr,zr,edgidx
 real(dp), dimension(:) :: Fleft,Gleft
 type(mesh_data), dimension(:) :: mesh
 type(flow_var_data), dimension(:) :: flowvars
+type(options_data) :: options 
 
 !Variables - Local
 real(dp) :: nx,ny,pwall
@@ -851,13 +859,20 @@ else
     fdeltasb = matmul(chmi,fchars)
 
     !Evaluate boundary velocity carrying though internal tangential component
-    ub = fdeltasb(2,1) + uninf + utin
-    vb = fdeltasb(3,1) + vninf + vtin
+    ub = fdeltasb(2,1) + uninf !+ utin
+    vb = fdeltasb(3,1) + vninf !+ vtin
 
     !Evaluate boundary primatives 
     rhob = fdeltasb(1,1) + rhoinf
-    pb = fdeltasb(4,1) + pinf
+    if (options%force_fixed_pratio) then 
+        pb = pinf
+    else
+        pb = fdeltasb(4,1) + pinf
+    end if 
     eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
+
+    !Accumulate inflow mass flux 
+    flowvars(zr)%mflux_in = flowvars(zr)%mflux_in + rhob*(ub*nx + vb*ny)*mesh(zr)%edgelen(edgidx)
 
     !Construct boundary fluxes
     Fleft(1) = rhob*ub
@@ -1590,7 +1605,7 @@ end subroutine backpressure_outflow_bc_ri
 
 
 !Outflow back pressure boundary condition (Characteristic) =========================
-subroutine backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,edge_idx,cr,zr) 
+subroutine backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,options,edge_idx,cr,zr) 
 implicit none 
 
 !Variables - Import
@@ -1598,6 +1613,7 @@ integer(in) :: cr,zr,edge_idx
 real(dp), dimension(:) :: Fleft,Gleft 
 type(flow_var_data), dimension(:) :: flowvars
 type(mesh_data), dimension(:) :: mesh
+type(options_data) :: options 
 
 !Variables - Local
 integer(in) :: zof
@@ -1638,10 +1654,16 @@ else !outflow -> pressure condition
     nx = -mesh(zr)%edge_nx(edge_idx)
     ny = -mesh(zr)%edge_ny(edge_idx)
 
-    !Boundary primatives (average outflow)
-    uinf = flowvars(zr)%u_outflow(zof)
-    vinf = flowvars(zr)%v_outflow(zof)
-    rhoinf = flowvars(zr)%rho_outflow(zof)
+    ! !Boundary primatives (average outflow)
+    ! uinf = flowvars(zr)%u_outflow(zof)
+    ! vinf = flowvars(zr)%v_outflow(zof)
+    ! rhoinf = flowvars(zr)%rho_outflow(zof)
+    ! cinf = sqrt(flowvars(zr)%gam*(pinf/rhoinf))
+
+    !Boundary primatives (local)
+    uinf = flowvars(zr)%u(cr)
+    vinf = flowvars(zr)%v(cr)
+    rhoinf = flowvars(zr)%rho(cr)
     cinf = sqrt(flowvars(zr)%gam*(pinf/rhoinf))
 
     !Internal and external boundary normal and tangential velocity
@@ -1683,8 +1705,11 @@ else !outflow -> pressure condition
 
         !Evaluate boundary primatives 
         rhob = fdeltasb(1,1) + rhoin
-        pb = fdeltasb(4,1) + pinf
-        ! pb = pinf
+        if (options%force_fixed_pratio) then 
+            pb = pinf
+        else
+            pb = fdeltasb(4,1) + pinf
+        end if 
         eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
     else !supersonic 
         ub = uin 

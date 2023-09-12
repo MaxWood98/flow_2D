@@ -129,8 +129,16 @@ sosinf_AC = sqrt(options%gamma*options%R*options%tinf)
 
 !Display actual flow properties 
 if ((options%csdisp) .AND. (dispt == 1)) then
-    write(*,'(A,F12.5)') '    pressure (Pa): ',pinf_AC
-    write(*,'(A,F12.5)') '    flow velocity (m/s): ',options%machinf*sosinf_AC
+    write(*,'(A)') '    Actual flow properties: '
+    write(*,'(A,F12.5)') '     pressure (Pa): ',pinf_AC
+    write(*,'(A,F12.5)') '     density (Kg/m^3): ',options%rhoinf
+    write(*,'(A,F12.5)') '     speed of sound (m/s): ',sosinf_AC
+    write(*,'(A,F12.5)') '     velocity (m/s): ',options%machinf*sosinf_AC
+    write(*,'(A)') '    Scaled flow properties: '
+    write(*,'(A,F12.5)') '     pressure : ',flowvars%pinf
+    write(*,'(A,F12.5)') '     density : ',flowvars%rhoinf
+    write(*,'(A,F12.5)') '     speed of sound : ',flowvars%cinf
+    write(*,'(A,F12.5)') '     velocity : ',flowvars%velinf
 end if 
 return
 end subroutine initialise_flow
@@ -321,14 +329,14 @@ elseif (cl == -5) then !Inflow --> enforce stagnation state inflow boundary cond
     pedge = flowvars(zr)%p(cr)
 elseif (cl == -6) then !Inflow --> enforce 'freestream' state inflow boundary condition
     call cell_flux(Fright,Gright,flowvars,cr,zr)
-    call freestream_inflow_c(Fleft,Gleft,cr,zr,flowvars,mesh,edge_idx)
+    call freestream_inflow_c(Fleft,Gleft,cr,zr,flowvars,mesh,options,edge_idx)
     pedge = flowvars(zr)%p(cr)
 elseif (cl == -7) then !Outflow --> enforce back pressure outflow boundary condition
     call cell_flux(Fright,Gright,flowvars,cr,zr)
     if (options%ff_bc_type == 'r') then 
         call backpressure_outflow_bc_ri(Fleft,Gleft,flowvars,mesh,edge_idx,cr,zr)
     elseif (options%ff_bc_type == 'c') then 
-        call backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,edge_idx,cr,zr)
+        call backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,options,edge_idx,cr,zr)
     end if 
     pedge = flowvars(zr)%p(cr)
 end if 
@@ -960,61 +968,6 @@ do ii=1,mesh%ncell
 end do
 return 
 end subroutine get_flowfield_temp
-
-
-
-
-!Evaluate inflow mass flux subroutine =========================
-subroutine evaluate_inflow_mass_flux(flowvars,mesh,options,tr_idx)
-implicit none 
-
-!Variables - Import
-integer(in) :: tr_idx
-type(flow_var_data), dimension(:) :: flowvars
-type(mesh_data), dimension(:)  :: mesh
-type(options_data) :: options
-
-!Variables - Local
-integer(in) :: ee,tt 
-integer(in) :: cl,cr
-real(dp) :: nx,ny,rhoin,uin,vin,mfluxT
-
-!Evaluate for this thread
-flowvars(tr_idx)%mflux_in = 0.0d0 
-do ee=1,mesh(tr_idx)%nedge
-
-    !Left and right cells for this edge
-    cl = mesh(tr_idx)%cell_left(ee)
-    cr = mesh(tr_idx)%cell_right(ee)
-
-    !If inflow face
-    if ((cl == -2) .OR. (cl == -3) .OR. (cl == -5) .OR. (cl == -6)) then !If inflow face or potential inflow face
-
-        !Cell unit normal vector (into domain)
-        nx = mesh(tr_idx)%edge_nx(ee)
-        ny = mesh(tr_idx)%edge_ny(ee)
-
-        !Local primative vector
-        rhoin = flowvars(tr_idx)%rho(cr) 
-        uin = flowvars(tr_idx)%u(cr)
-        vin = flowvars(tr_idx)%v(cr) 
-
-        !Accumulate inflow mass flow
-        flowvars(tr_idx)%mflux_in = flowvars(tr_idx)%mflux_in + rhoin*(uin*nx + vin*ny)*mesh(tr_idx)%edgelen(ee)
-    end if 
-end do 
-!$OMP barrier
-
-!Accumulate between threads 
-mfluxT = 0.0d0 
-do tt=1,options%num_threads
-    mfluxT = mfluxT + flowvars(tt)%mflux_in
-end do 
-!$OMP barrier
-flowvars(tr_idx)%mflux_in = mfluxT
-!$OMP barrier
-return 
-end subroutine evaluate_inflow_mass_flux
 
 
 end module flow_calculation_mod 
