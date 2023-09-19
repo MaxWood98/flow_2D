@@ -123,6 +123,9 @@ do ii=1,mesh%nedge
     end if
 end do 
 
+!Initialise boundary condition states
+mesh%bc_state(:) = 0 
+
 !If pressure outflow boundary condition is active then tag and identify outflow zones 
 if (mesh%bc_active(7) == 1) then 
     call identify_outflow_zones(mesh,invalid_mesh)

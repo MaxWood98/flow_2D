@@ -1,8 +1,8 @@
 !Flow solver calculation module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 0.7.0
-!Updated: 22/04/23
+!Version: 0.7.1
+!Updated: 19/09/23
 
 !Boundary condition flags -------
 ! -> Wall = -1
@@ -179,6 +179,39 @@ end subroutine set_flowvars_scale
 
 
 
+!Set boundary condition states subroutine =========================
+subroutine set_fixedbc_states(mesh_par,flowvars_par,tr_idx,bc_type)
+implicit none 
+
+!Variables - Import
+integer(in) :: tr_idx,bc_type
+type(mesh_data), dimension(:), allocatable :: mesh_par
+type(flow_var_data), dimension(:), allocatable :: flowvars_par
+
+!Variables - Local 
+integer(in) :: ee 
+real(dp) :: Vnorm
+
+!Check each edge 
+do ee=1,mesh_par(tr_idx)%nedge
+    if ((mesh_par(tr_idx)%cell_left(ee) == bc_type) .OR. (mesh_par(tr_idx)%cell_right(ee) == bc_type)) then 
+        Vnorm = (flowvars_par(tr_idx)%uinf*mesh_par(tr_idx)%edge_nx(ee) + &
+        flowvars_par(tr_idx)%vinf*mesh_par(tr_idx)%edge_ny(ee))
+        if (Vnorm .GT. 0.0d0) then !set inflow
+            mesh_par(tr_idx)%bc_state(ee) = 1
+        elseif (Vnorm .LT. 0.0d0) then !set outflow
+            mesh_par(tr_idx)%bc_state(ee) = -1
+        elseif (Vnorm == 0.0d0) then !set symmetry 
+            mesh_par(tr_idx)%bc_state(ee) = 0 
+        end if 
+    end if 
+end do 
+return 
+end subroutine set_fixedbc_states
+
+
+
+
 !Calculate conservative variables subroutines =========================
 subroutine get_conservative_vars(W,flowvars) 
 implicit none 
@@ -288,6 +321,17 @@ elseif (cl == -2) then !Far field --> enforce far field boundary conditions
     SoS = sqrt(flowvars(zr)%gam*(flowvars(zr)%p(cr)/flowvars(zr)%rho(cr)))
     mache = abs(Vnorm)/SoS
 
+    !Force boundary condition inflow/outflow selection if enabled 
+    if (options%force_fixed_ff_ifof_state) then 
+        if (mesh(zr)%bc_state(edge_idx) == 1) then !force inflow 
+            Vnorm = abs(Vnorm)
+        elseif (mesh(zr)%bc_state(edge_idx) == -1) then !force outflow 
+            Vnorm = -1.0d0*abs(Vnorm) 
+        elseif (mesh(zr)%bc_state(edge_idx) == 0) then !force symmetry 
+            Vnorm = 0.0d0 
+        end if 
+    end if 
+
     !Determine inflow or outflow on cell edge to cell right 
     if (Vnorm .GT. 0.0d0) then !Inflow to cell right
         if (mache .GE. 1.0d0) then !Supersonic
@@ -296,17 +340,27 @@ elseif (cl == -2) then !Far field --> enforce far field boundary conditions
             if (options%ff_bc_type == 'r') then 
                 call subsonic_inflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
             elseif (options%ff_bc_type == 'c') then 
-                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,mesh,edge_idx,1_in)
+                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,1_in)
             endif
         end if
-    else!if (Vnorm .LT. 0.0d0) then !Outflow from cell right
+    elseif (Vnorm .LT. 0.0d0) then !Outflow from cell right
         if (mache .GE. 1.0d0) then !Supersonic
             call supersonic_outflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
         else !Subsonic
             if (options%ff_bc_type == 'r') then 
                 call subsonic_outflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
             elseif (options%ff_bc_type == 'c') then 
-                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,mesh,edge_idx,-1_in)
+                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,-1_in)
+            end if 
+        end if
+    else !flow is parallel to the boundary (use outflow conditions)
+        if (mache .GE. 1.0d0) then !Supersonic
+            call supersonic_outflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
+        else !Subsonic
+            if (options%ff_bc_type == 'r') then 
+                call subsonic_outflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
+            elseif (options%ff_bc_type == 'c') then 
+                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,-1_in)
             end if 
         end if
     end if

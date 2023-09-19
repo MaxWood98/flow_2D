@@ -171,6 +171,9 @@ read(11,*) !skip
 read(11,*) options%force_fixed_pratio
 read(11,*) !skip
 read(11,*) !skip
+read(11,*) options%force_fixed_ff_ifof_state
+read(11,*) !skip
+read(11,*) !skip
 read(11,*) !skip
 read(11,*) options%init_state
 read(11,*) !skip
@@ -258,7 +261,7 @@ frmt = frmt//')'
 frmt = '(F0.'//frmt
 
 !Allocate initial character
-allocate(character(len=2*X) :: str_I)
+allocate(character(len=4*X) :: str_I)
 
 !Write data to return charachter
 write(str_I,frmt) val

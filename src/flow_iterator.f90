@@ -1,8 +1,8 @@
 !Flow solver solution itteration module (parallel capable)
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 0.2.2
-!Updated: 11/09/23
+!Version: 0.2.3
+!Updated: 19/09/23
 
 !Module
 module flow_iterator_mod
@@ -70,6 +70,9 @@ do tt=1,options%num_threads
     fres_par(tt)%cell_Lp(:,:) = 0.0d0 
     call get_conservative_vars(fres_par(tt)%W,flowvars_par(tt)) 
     call get_primative_vars(fres_par(tt)%W,flowvars_par(tt),mesh_par(tt)%ncell,nanflag) 
+    if (options%force_fixed_ff_ifof_state) then !if fixed inflow/outflow states for far field boundary conditions then set these here 
+        call set_fixedbc_states(mesh_par,flowvars_par,tt,-2_in)
+    end if 
     ! print *, '-----------'
     ! print *, 'mesh_par(tt)%ncell = ',mesh_par(tt)%ncell
     ! print *, 'mesh_par(tt)%nedge = ',mesh_par(tt)%nedge
@@ -376,6 +379,7 @@ fres_par(tr_idx)%W0(:,:) = fres_par(tr_idx)%W(:,:)
 do rk_stage=1,options%nRKstage
 
     !Initialise this thread
+    flowvars_par(tr_idx)%mflux_in = 0.0d0  
     fres_par(tr_idx)%R(:,:) = 0.0d0 
     fcoefs_par(tr_idx)%cx = 0.0d0
     fcoefs_par(tr_idx)%cy = 0.0d0 
@@ -385,12 +389,16 @@ do rk_stage=1,options%nRKstage
         mesh_par(tr_idx)%psensor_num(:) = 0.0d0
         mesh_par(tr_idx)%psensor_dnum(:) = 0.0d0
         mesh_par(tr_idx)%psensor(:) = 0.0d0
-        flowvars_par(tr_idx)%mflux_in = 0.0d0 
     end if
     !$OMP barrier
 
     !Evaluate dissipation 
     if (options%RKstagediss(rk_stage) == 1) then 
+
+        !Update cell spectral radii
+        mesh_par(tr_idx)%specrad(:) = 0.0d0 
+        !$OMP barrier
+        call cell_spectral_radius(mesh_par,flowvars_par,tr_idx)
 
         !Evaluate pressure sensor
         call accumulate_pressure_sensor_p(mesh_par,flowvars_par,tr_idx)
@@ -425,15 +433,15 @@ do rk_stage=1,options%nRKstage
     !$OMP barrier
 
     !Incorporate dissipation to residual 
-    fres_par(tr_idx)%R(:,:) = fres_par(tr_idx)%R(:,:) - fres_par(tr_idx)%D(:,:) 
-    !!$OMP barrier
+    if (options%RKstagediss(rk_stage) == 1) then 
+        fres_par(tr_idx)%R(:,:) = fres_par(tr_idx)%R(:,:) - fres_par(tr_idx)%D(:,:) 
+    end if 
 
     !Perform step
     do vari=1,4
         fres_par(tr_idx)%W(:,vari) = fres_par(tr_idx)%W0(:,vari) - fcoefs_par(tr_idx)%RK_alfa(rk_stage)*&
                                     (mesh_par(tr_idx)%deltaT(:)/mesh_par(tr_idx)%cell_vol(:))*fres_par(tr_idx)%R(:,vari)
     end do 
-    !!$OMP barrier
 
     !Update flow primative variables
     call get_primative_vars(fres_par(tr_idx)%W,flowvars_par(tr_idx),mesh_par(tr_idx)%ncell,nanflag)  

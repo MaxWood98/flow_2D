@@ -22,7 +22,7 @@ type mesh_data
     integer(in) :: ncell,nedge,nvtx,ncshare,npwallcell,npwalledge,nzone_outflow
     integer(in) :: bc_active(7)
     real(dp) :: chordx,mindt
-    integer(in), dimension(:), allocatable :: edge_1,edge_2,edgeonwcell,cellonwall,cell_mz
+    integer(in), dimension(:), allocatable :: edge_1,edge_2,edgeonwcell,cellonwall,cell_mz,bc_state
     integer(in), dimension(:), allocatable :: cell_left,cell_right,cell_nedge,cell_nedgei,cell_nedgeiw,cell_link 
     integer(in), dimension(:), allocatable :: zone_left,zone_right,outflow_zone,nedge_of_zone
     integer(in), dimension(:,:), allocatable :: celltransfer
@@ -35,7 +35,7 @@ end type mesh_data
 type options_data
     character(len=:), allocatable :: iopath,optpath
     character(len=1) :: mflux_bc_type,wall_bc_type,ff_bc_type,init_state,ffexport_scale
-    logical :: csdisp,pptoggle,ffexporttoggle,damptsteps,evalMassflux,force_fixed_pratio
+    logical :: csdisp,pptoggle,ffexporttoggle,damptsteps,evalMassflux,force_fixed_pratio,force_fixed_ff_ifof_state
     integer(in) :: ittlim,ittlim_min,avstencil_size,num_threads,nRKstage,ts_mode,psNsmooth
     integer(in) :: status,Mflux_relaxiter,massflux_niterav
     integer(in) :: RKstagediss(4)

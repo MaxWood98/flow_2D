@@ -56,6 +56,7 @@ allocate(mesh%edge_mx(nedge))
 allocate(mesh%edge_my(nedge))
 allocate(mesh%outflow_zone(nedge))
 allocate(mesh%nedge_of_zone(nedge))
+allocate(mesh%bc_state(nedge))
 return
 end subroutine allocate_mesh
 
@@ -105,6 +106,7 @@ deallocate(mesh%edge_mx)
 deallocate(mesh%edge_my)
 deallocate(mesh%outflow_zone)
 deallocate(mesh%nedge_of_zone)
+deallocate(mesh%bc_state)
 return
 end subroutine deallocate_mesh
 

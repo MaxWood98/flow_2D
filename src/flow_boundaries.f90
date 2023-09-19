@@ -434,31 +434,19 @@ end subroutine subsonic_outflow_bc_ri
 
 
 !Subsonic inflow/outflow boundary condition subroutine =========================
-subroutine subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,mesh,edgidx,if_of)
+subroutine subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,if_of)
 implicit none 
 
 !Variables - Import
-integer(in) :: cr,zr,if_of,edgidx
+integer(in) :: cr,zr,if_of
 real(dp), dimension(:) :: Fleft,Gleft
-type(mesh_data), dimension(:) :: mesh
 type(flow_var_data), dimension(:) :: flowvars
 
 !Variables - Local
-real(dp) :: nx,ny
-real(dp) :: uin,vin,rhoin,pin,uinf,vinf,rhoinf,pinf,vnorm_in,vnorm_inf,cin,cinf
-real(dp) :: unin,vnin,utin,vtin,uninf,vninf,utinf,vtinf
+real(dp) :: uin,vin,rhoin,pin,uinf,vinf,rhoinf,pinf,cin,cinf
 real(dp) :: ub,vb,rhob,pb,eb
 real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
 real(dp) :: chm(4,4),chmi(4,4)
-
-!Cell normal vector with positive dot product with the velocity vector 
-if (if_of == 1) then !inflow
-    nx = mesh(zr)%edge_nx(edgidx)
-    ny = mesh(zr)%edge_ny(edgidx)
-elseif (if_of == -1) then !outflow
-    nx = -mesh(zr)%edge_nx(edgidx)
-    ny = -mesh(zr)%edge_ny(edgidx)
-end if 
 
 !Local primative vector
 rhoin = flowvars(zr)%rho(cr) 
@@ -474,22 +462,10 @@ vinf = flowvars(zr)%vinf
 pinf = flowvars(zr)%pinf
 cinf = flowvars(zr)%cinf
 
-!Surface normal and tangential velocity at internal and external 
-vnorm_in = uin*nx + vin*ny
-unin = nx*vnorm_in
-vnin = ny*vnorm_in
-utin = uin - unin
-vtin = vin - vnin
-vnorm_inf = uinf*nx + vinf*ny
-uninf = nx*vnorm_inf
-vninf = ny*vnorm_inf
-utinf = uinf - uninf
-vtinf = vinf - vninf
-
 !Evaluate flow deltas from freestream
 fdeltasi(1,1) = rhoin - rhoinf
-fdeltasi(2,1) = unin - uninf 
-fdeltasi(3,1) = vnin - vninf 
+fdeltasi(2,1) = uin - uinf 
+fdeltasi(3,1) = vin - vinf 
 fdeltasi(4,1) = pin - pinf
 
 !Evaluate characteristic matrix
@@ -510,8 +486,8 @@ end if
 fdeltasb = matmul(chmi,fchars)
 
 !Evaluate boundary velocity carrying though internal tangential component
-ub = fdeltasb(2,1) + uninf + utin
-vb = fdeltasb(3,1) + vninf + vtin
+ub = fdeltasb(2,1) + uinf
+vb = fdeltasb(3,1) + vinf
 
 !Evaluate boundary primatives 
 rhob = fdeltasb(1,1) + rhoinf
@@ -530,6 +506,147 @@ Gleft(3) = rhob*vb*vb + pb
 Gleft(4) = vb*(eb + pb) 
 return 
 end subroutine subsonic_bc_char
+
+! subroutine subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,mesh,edgidx,if_of)
+! implicit none 
+
+! !Variables - Import
+! integer(in) :: cr,zr,if_of,edgidx
+! real(dp), dimension(:) :: Fleft,Gleft
+! type(mesh_data), dimension(:) :: mesh
+! type(flow_var_data), dimension(:) :: flowvars
+
+! !Variables - Local
+! real(dp) :: nx,ny
+! real(dp) :: uin,vin,rhoin,pin,uinf,vinf,rhoinf,pinf,vnorm_in,vnorm_inf,cin,cinf
+! real(dp) :: unin,vnin,utin,vtin,uninf,vninf,utinf,vtinf
+! real(dp) :: ub,vb,rhob,pb,eb
+! real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
+! real(dp) :: chm(4,4),chmi(4,4)
+
+! !Cell normal vector with positive dot product with the velocity vector 
+! if (if_of == 1) then !inflow
+!     nx = mesh(zr)%edge_nx(edgidx)
+!     ny = mesh(zr)%edge_ny(edgidx)
+! elseif (if_of == -1) then !outflow
+!     nx = -mesh(zr)%edge_nx(edgidx)
+!     ny = -mesh(zr)%edge_ny(edgidx)
+! end if 
+
+! !Local primative vector
+! rhoin = flowvars(zr)%rho(cr) 
+! uin = flowvars(zr)%u(cr)
+! vin = flowvars(zr)%v(cr) 
+! pin = flowvars(zr)%p(cr)
+! cin = sqrt(flowvars(zr)%gam*(pin/rhoin))
+
+! !Freestream primative vector
+! rhoinf = flowvars(zr)%rhoinf
+! uinf = flowvars(zr)%uinf
+! vinf = flowvars(zr)%vinf
+! pinf = flowvars(zr)%pinf
+! cinf = flowvars(zr)%cinf
+
+! !Surface normal and tangential velocity at internal and external 
+! vnorm_in = uin*nx + vin*ny
+! unin = nx*vnorm_in
+! vnin = ny*vnorm_in
+! utin = uin - unin
+! vtin = vin - vnin
+
+! vnorm_inf = uinf*nx + vinf*ny
+! uninf = nx*vnorm_inf
+! vninf = ny*vnorm_inf
+! utinf = uinf - uninf
+! vtinf = vinf - vninf
+
+! ! if (if_of == 1) then !inflow
+
+! !     vnorm_in = uin*nx + vin*ny
+! !     unin = nx*vnorm_in
+! !     vnin = ny*vnorm_in
+! !     utin = uin - unin
+! !     vtin = vin - vnin
+
+! !     vnorm_inf = uinf*nx + vinf*ny
+! !     uninf = nx*vnorm_inf
+! !     vninf = ny*vnorm_inf
+! !     utinf = uinf - uninf
+! !     vtinf = vinf - vninf
+
+! ! elseif (if_of == -1) then !outflow
+
+! !     vnorm_in = uin*nx + vin*ny
+! !     unin = nx*vnorm_in
+! !     vnin = ny*vnorm_in
+! !     utin = uin + unin
+! !     vtin = vin + vnin
+
+! !     vnorm_inf = uinf*nx + vinf*ny
+! !     uninf = nx*vnorm_inf
+! !     vninf = ny*vnorm_inf
+! !     utinf = uinf + uninf
+! !     vtinf = vinf + vninf
+
+! ! end if 
+
+
+! !Evaluate flow deltas from freestream
+! ! fdeltasi(1,1) = rhoin - rhoinf
+! ! fdeltasi(2,1) = unin - uninf 
+! ! fdeltasi(3,1) = vnin - vninf 
+! ! fdeltasi(4,1) = pin - pinf
+
+
+! fdeltasi(1,1) = rhoin - rhoinf
+! fdeltasi(2,1) = uin - uinf 
+! fdeltasi(3,1) = vin - vinf 
+! fdeltasi(4,1) = pin - pinf
+
+
+
+! !Evaluate characteristic matrix
+! call charmat(chm,chmi,rhoinf,cinf)
+! ! call charmat(chm,chmi,0.5d0*(rhoinf+rhoin),0.5d0*(cinf+cin))
+
+! !Evaluate characteristics
+! fchars = matmul(chm,fdeltasi)
+
+! !Apply boundary condition 
+! if (if_of == 1) then !inflow
+!     fchars(1:3,1) = 0.0d0 
+! elseif (if_of == -1) then !outflow
+!     fchars(4,1) = 0.0d0 
+! end if 
+
+! !Calculate boundary deltas
+! fdeltasb = matmul(chmi,fchars)
+
+
+! !Evaluate boundary velocity carrying though internal tangential component
+! ! ub = fdeltasb(2,1) + uninf + utin
+! ! vb = fdeltasb(3,1) + vninf + vtin
+
+! ub = fdeltasb(2,1) + uinf !+ utin
+! vb = fdeltasb(3,1) + vinf !+ vtin
+
+! !Evaluate boundary primatives 
+! rhob = fdeltasb(1,1) + rhoinf
+! pb = fdeltasb(4,1) + pinf
+! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
+
+! !Construct boundary fluxes
+! Fleft(1) = rhob*ub
+! Fleft(2) = rhob*ub*ub + pb
+! Fleft(3) = rhob*ub*vb
+! Fleft(4) = ub*(eb + pb)
+
+! Gleft(1) = rhob*vb
+! Gleft(2) = rhob*vb*ub
+! Gleft(3) = rhob*vb*vb + pb
+! Gleft(4) = vb*(eb + pb) 
+! return 
+! end subroutine subsonic_bc_char
 
 
 
