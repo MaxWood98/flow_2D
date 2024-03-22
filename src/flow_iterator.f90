@@ -1,16 +1,14 @@
 !Flow solver solution itteration module (parallel capable)
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 0.2.3
-!Updated: 19/09/23
+!Version: 0.2.6
+!Updated: 21/03/24
 
 !Module
 module flow_iterator_mod
 use omp_lib
 use flow_io_mod
-! use flow_data_mod
 use flow_mesh_mod
-use flow_general_mod
 use flow_calculation_mod
 contains 
 
@@ -28,7 +26,7 @@ type(coeficient_data) :: fcoefs
 
 !Variables - Local 
 integer(in) :: cc,tt,fitt,nanflag,tr_idx,resconv,itttgt
-real(dp) :: rho_res,res_sd,longres_sum,mindt,mflux_av
+real(dp) :: rho_res,res_sd,longres_sum,mindt,mflux_av,mflux_inst_roll
 real(dp) :: rhores_hist(options%ittlim),rhores_hist_av(options%ittlim),massfluxsten(options%massflux_niterav)
 real(dp) :: mass_in_total_iter(options%massflux_niterav),time_total_iter(options%massflux_niterav)
 type(mesh_data), dimension(:), allocatable :: mesh_par
@@ -90,7 +88,7 @@ end if
 
 !Timestepping
 if (options%csdisp) then
-    write(*,'(A)') '--> timestepping ------ parallel mode:'
+    write(*,'(A,I0,A)') '--> timestepping {',options%num_threads,' threads}:'
 end if 
 flowvars%res_conv = 0
 if (options%csdisp) then
@@ -104,6 +102,7 @@ end if
 fcoefs%cl = 0.0d0  
 fcoefs%cd = 0.0d0 
 fcoefs%cm = 0.0d0 
+fcoefs%mflux_in = 0.0d0 
 
 !Initialise residual trend 
 longres_sum = 0.0d0 
@@ -162,7 +161,7 @@ do fitt=1,options%ittlim
     call cell_spectral_radius(mesh_par,flowvars_par,tr_idx)
     !$OMP barrier
     call timestep_p(mesh_par,options,nanflag,tr_idx)
-    if (options%ts_mode == 0) then !Set global timestep if selected
+    if (options%ts_mode == 'global') then !Set global timestep if selected
         mesh_par(tr_idx)%mindt = minval(mesh_par(tr_idx)%deltaT(:))
         !$OMP single 
         mindt = mesh_par(1)%mindt 
@@ -202,9 +201,9 @@ do fitt=1,options%ittlim
             !Find average timestep this itteration
             time_total_iter(itttgt) = 0.0d0 
             do tt=1,options%num_threads
-                time_total_iter(itttgt) = time_total_iter(itttgt) + sum(mesh_par(tt)%deltaT(:))
+                time_total_iter(itttgt) = time_total_iter(itttgt) + sum(mesh_par(tt)%deltaT(:)*mesh_par(tt)%cell_vol(:))
             end do 
-            time_total_iter(itttgt) = time_total_iter(itttgt)/real(mesh%ncell,dp)
+            time_total_iter(itttgt) = time_total_iter(itttgt)/mesh%cvol_tot
 
             !Total mass in on this itteration 
             mass_in_total_iter(itttgt) = 0.0d0 
@@ -212,15 +211,19 @@ do fitt=1,options%ittlim
                 mass_in_total_iter(itttgt) = mass_in_total_iter(itttgt) + flowvars_par(tt)%mflux_in*time_total_iter(itttgt)
             end do 
 
-            !Evaluate mass flux over rolling time period 
-            flowvars%mflux_in = sum(mass_in_total_iter)/sum(time_total_iter)
+            !Evaluate mass flux over rolling time period
+            mflux_inst_roll = sum(mass_in_total_iter)/sum(time_total_iter)
             
             !Store in averaging array 
-            massfluxsten(itttgt) = flowvars%mflux_in
+            massfluxsten(itttgt) = mflux_inst_roll
 
             !Calculate average value 
-            mflux_av = sum(massfluxsten(:))/real(options%massflux_niterav,dp)
+            mflux_av = sum(massfluxsten(:)*time_total_iter(:))/sum(time_total_iter(:))
+
+            !Assign instantanious mass flux as the time averaged integrated value 
+            fcoefs%mflux_in = mflux_av
         else
+            fcoefs%mflux_in = 0.0d0 
             mflux_av = 0.0d0 
         end if 
         
@@ -251,12 +254,14 @@ do fitt=1,options%ittlim
             fcoefs%cl_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
             fcoefs%cd_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
             fcoefs%cm_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
+            fcoefs%mflux_in_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
             options%status = nanflag
         elseif (options%status == 1) then 
             write(*,'(A)') '    invalid options exit'
             fcoefs%cl_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
             fcoefs%cd_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
             fcoefs%cm_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
+            fcoefs%mflux_in_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
             options%status = 1
             nanflag = 1
         end if
@@ -271,8 +276,8 @@ do fitt=1,options%ittlim
             end if
         end if
         if (options%csdisp) then
-            write(*,'(I8,A,F10.6,A,F14.8,A,F14.8,A,F14.8,A,F10.6,A,F10.6)') fitt,'  ',rho_res,'  ',fcoefs%cl,'  ',fcoefs%cd&
-            ,'  ',mflux_av,'   ',flowvars%force_res,'   ',res_sd
+            write(*,'(I8,A,F10.6,A,F14.8,A,F14.8,A,F14.8,A,F10.6,A,F10.6)') fitt,'  ',rho_res,'  ',fcoefs%cl_av,'  ',fcoefs%cd_av&
+            ,'  ',fcoefs%mflux_in_av,'   ',flowvars%force_res,'   ',res_sd
         end if
 
         !Residual convergence check
@@ -283,12 +288,12 @@ do fitt=1,options%ittlim
                     write(*,'(A)') '    rho_res convergence'
                 end if
                 resconv = 1 
-            elseif (flowvars%force_res .LE. options%term_res)then 
-                flowvars%res_conv = 1
-                if (options%csdisp) then
-                    write(*,'(A)') '    force_sd convergence'
-                end if
-                resconv = 1 
+            ! elseif (flowvars%force_res .LE. options%term_res)then 
+            !     flowvars%res_conv = 1
+            !     if (options%csdisp) then
+            !         write(*,'(A)') '    force_sd convergence'
+            !     end if
+            !     resconv = 1 
             elseif (res_sd .LE. options%term_res) then 
                 flowvars%res_conv = 1
                 if (options%csdisp) then
@@ -316,13 +321,6 @@ do tt=1,options%num_threads
         mesh%psensor(mesh_par(tt)%cell_link(cc)) = mesh_par(tt)%psensor(cc)
     end do 
 end do 
-if (options%evalMassflux) then
-    flowvars%mflux_in = sum(massfluxsten(:))/real(options%massflux_niterav,dp)
-    fcoefs%mflux_in = flowvars%mflux_in
-else
-    flowvars%mflux_in = 0.0d0 
-    fcoefs%mflux_in = 0.0d0 
-end if 
 
 !nan error handling
 if (nanflag == 1) then
@@ -330,7 +328,7 @@ if (nanflag == 1) then
     fcoefs%cl_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
     fcoefs%cd_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
     fcoefs%cm_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
-    fcoefs%mflux_in = ieee_value(1.0d0,IEEE_QUIET_NAN)
+    fcoefs%mflux_in_av = ieee_value(1.0d0,IEEE_QUIET_NAN)
     return 
 end if
 
@@ -338,14 +336,14 @@ end if
 if ((mesh%bc_active(3) == 1) .OR. (mesh%bc_active(4) == 1)) then 
     call mass_flux_error(mesh,flowvars)
     if (options%csdisp) then
-        write(*,'(A,F8.4,A)') '    mass flux error = ',flowvars%mflux_error*100.0d0,'%'
+        write(*,'(A,A,A)') '      {mass flux error = ',real2F0_Xstring(flowvars%mflux_error*100.0d0,8_in),'%}'
     end if 
 end if
 
 !Display inflow mass flux 
 if (options%evalMassflux) then
     if (options%csdisp) then
-        write(*,'(A,F12.8)') '    inflow mass flux = ',flowvars%mflux_in
+        write(*,'(A,A,A)') '      {inflow mass flux = ',real2F0_Xstring(fcoefs%mflux_in_av,8_in),'}'
     end if 
 end if 
 return 
@@ -369,10 +367,14 @@ type(coeficient_data), dimension(:), allocatable :: fcoefs_par
 
 !Variables - Local 
 integer(in) :: tt,ss,rk_stage,vari
+real(dp) :: mflux_thread
 
 !Set current step initial conservative variables
 upd_allow = 0 
 fres_par(tr_idx)%W0(:,:) = fres_par(tr_idx)%W(:,:)
+
+!Initialise mass flux on this thread 
+mflux_thread = 0.0d0 
 
 !Perform itteration
 !$OMP barrier
@@ -383,7 +385,7 @@ do rk_stage=1,options%nRKstage
     fres_par(tr_idx)%R(:,:) = 0.0d0 
     fcoefs_par(tr_idx)%cx = 0.0d0
     fcoefs_par(tr_idx)%cy = 0.0d0 
-    if (options%RKstagediss(rk_stage) == 1) then 
+    if (options%RKstagediss_eval(rk_stage) == 1) then 
         fres_par(tr_idx)%D(:,:) = 0.0d0 
         fres_par(tr_idx)%cell_Lp(:,:) = 0.0d0 
         mesh_par(tr_idx)%psensor_num(:) = 0.0d0
@@ -393,7 +395,7 @@ do rk_stage=1,options%nRKstage
     !$OMP barrier
 
     !Evaluate dissipation 
-    if (options%RKstagediss(rk_stage) == 1) then 
+    if (options%RKstagediss_eval(rk_stage) == 1) then 
 
         !Update cell spectral radii
         mesh_par(tr_idx)%specrad(:) = 0.0d0 
@@ -433,7 +435,7 @@ do rk_stage=1,options%nRKstage
     !$OMP barrier
 
     !Incorporate dissipation to residual 
-    if (options%RKstagediss(rk_stage) == 1) then 
+    if (options%RKstagediss_apply(rk_stage) == 1) then 
         fres_par(tr_idx)%R(:,:) = fres_par(tr_idx)%R(:,:) - fres_par(tr_idx)%D(:,:) 
     end if 
 
@@ -445,6 +447,13 @@ do rk_stage=1,options%nRKstage
 
     !Update flow primative variables
     call get_primative_vars(fres_par(tr_idx)%W,flowvars_par(tr_idx),mesh_par(tr_idx)%ncell,nanflag)  
+
+    !Store mass flux on this thread (keep only value from first itteration where flow state is the final condition from the previous iteration)
+    if (rk_stage == 1) then 
+        mflux_thread = flowvars_par(tr_idx)%mflux_in
+    elseif (rk_stage == options%nRKstage) then 
+        flowvars_par(tr_idx)%mflux_in = mflux_thread
+    end if 
 
     !Syncronise threads
     !$OMP barrier 
@@ -582,9 +591,9 @@ end do
 if (mesh_par(tr_idx)%bc_active(3) == 1) then     !Mass flux inflow
     ! call mass_flux_inflow_bc(R,mesh,flowvars)
 elseif (mesh_par(tr_idx)%bc_active(4) == 1) then !Mass flux outflow
-    if (options%mflux_bc_type == 'p') then !pressure diven flux
+    if (options%mflux_bc_type == 'pressure') then !pressure diven flux
         ! call mass_flux_outflow_bc_P(R,mesh,flowvars,options,iter)
-    elseif (options%mflux_bc_type == 'v') then !velocity driven flux 
+    elseif (options%mflux_bc_type == 'velocity') then !velocity driven flux 
         call mass_flux_outflow_bc_V(fres_par(tr_idx)%R,mesh_par,flowvars_par,options,iter,rk_stage,upd_allow,tr_idx)
     end if 
 end if 
@@ -686,7 +695,7 @@ do ii=1,mesh_par(tr_idx)%nedge
     zr = mesh_par(tr_idx)%zone_right(ii)
 
     !Pressure sensor value 
-    call edge_pressure_sensor(psensor_num,psensor_dnum,cl,cr,zl,zr,ii,flowvars_par,mesh_par)
+    call edge_pressure_sensor(psensor_num,psensor_dnum,cl,cr,zl,zr,flowvars_par)
     if (mesh_par(zr)%cell_mz(cr) == 0) then 
         mesh_par(zr)%psensor_num(cr) = mesh_par(zr)%psensor_num(cr) - psensor_num
         mesh_par(zr)%psensor_dnum(cr) = mesh_par(zr)%psensor_dnum(cr) + psensor_dnum
@@ -782,6 +791,7 @@ type(mesh_data), dimension(:) :: mesh_par
 
 !Variables - Local 
 integer(in) :: ii
+integer(in) :: cl,cr,zl,zr
 
 !Calculate timestep for each cell
 do ii=1,mesh_par(tr_idx)%ncell
@@ -792,6 +802,27 @@ do ii=1,mesh_par(tr_idx)%ncell
         nanflag = 1
     end if
 end do
+
+!Damp timesteps
+if (options%damptsteps) then 
+    !$OMP barrier
+    do ii=1,mesh_par(tr_idx)%nedge
+        cl = mesh_par(tr_idx)%cell_left(ii)
+        cr = mesh_par(tr_idx)%cell_right(ii)
+        zl = mesh_par(tr_idx)%zone_left(ii)
+        zr = mesh_par(tr_idx)%zone_right(ii)
+        if ((cl .GT. 0) .AND.(cr .GT. 0)) then 
+            if (zr == tr_idx) then 
+                mesh_par(zr)%deltaTD(cl) = min(mesh_par(zl)%deltaT(cl),mesh_par(zr)%deltaT(cr))
+            end if 
+            if (zl == tr_idx) then 
+                mesh_par(zl)%deltaTD(cr) = min(mesh_par(zl)%deltaT(cl),mesh_par(zr)%deltaT(cr))
+            end if 
+        end if 
+    end do 
+    !$OMP barrier
+    mesh_par(tr_idx)%deltaT(:) = mesh_par(tr_idx)%deltaTD(:)
+end if 
 return 
 end subroutine timestep_p
 

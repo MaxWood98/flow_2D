@@ -1,12 +1,12 @@
 !Flow solver io module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering 
-!Version: 0.5.9
-!Updated: 23/08/23
+!Version: 0.5.1
+!Updated: 20/03/24
 
 !Module
 module flow_io_mod
-! use flow_data_mod
+use io_utilities
 use flow_general_mod
 contains 
 
@@ -19,27 +19,72 @@ implicit none
 type(options_data) :: options
     
 !Variables - Local 
-integer(in) :: nargs
-integer(in32) :: arglen,argstat
+integer(in32) :: ii,jj
+integer(in32) :: nargs,pathpos
+character(len=:), allocatable :: argcurr,pathtemp
 
 !Check and process supplied command arguments
 nargs = command_argument_count()
-if (nargs == 0) then !Use default path
-    allocate(character(len=3) :: options%optpath)
-    options%optpath = 'io/'
-    allocate(character(len=3) :: options%iopath)
-    options%iopath = 'io/'
-else !Use specified path 
-    call get_command_argument(number=1, length=arglen)
-    allocate(character(len=arglen) :: options%optpath)
-    call get_command_argument(number=1, value=options%optpath, status=argstat)
-    call get_command_argument(number=2, length=arglen)
-    allocate(character(len=arglen) :: options%iopath)
-    call get_command_argument(number=2, value=options%iopath, status=argstat)
+if (nargs == 0) then !Do nothing
+
+else !Scan for and select options 
+
+    !Scan for arguments 
+    do ii=1,nargs-1
+
+        !Current argument 
+        argcurr = get_command_argument_n_str(ii)
+
+        !If option tag
+        if (argcurr == '-o') then !next is options filename with path 
+
+            !Read options filepath and extract optpath
+            options%optpath = get_command_argument_n_str(ii+1)
+            pathpos = 0 
+            do jj=len_trim(options%optpath),1,-1
+                if ((options%optpath(jj:jj) == '/') .OR. (options%optpath(jj:jj) == '\')) then 
+                    pathpos = jj 
+                    exit 
+                end if 
+            end do 
+            if (pathpos .NE. 0) then !path
+                pathtemp = options%optpath
+                options%opt_filename = pathtemp(pathpos+1:len_trim(pathtemp))
+                options%optpath = pathtemp(1:pathpos)
+            else !no path 
+                options%opt_filename = options%optpath
+                options%optpath = ''
+            end if 
+            ! print *, pathpos
+            ! print *, options%optpath
+            ! print *, options%opt_filename
+        elseif (argcurr == '-m') then !next is mesh filename with path
+
+            !Read mesh filepath and extract iopath 
+            options%iopath = get_command_argument_n_str(ii+1)
+            pathpos = 0
+            do jj=len_trim(options%iopath),1,-1
+                if ((options%iopath(jj:jj) == '/') .OR. (options%iopath(jj:jj) == '\')) then 
+                    pathpos = jj 
+                    exit 
+                end if 
+            end do 
+            if (pathpos .NE. 0) then !path
+                pathtemp = options%iopath
+                options%mesh_filename = pathtemp(pathpos+1:len_trim(pathtemp))
+                options%iopath = pathtemp(1:pathpos)
+            else !no path 
+                options%mesh_filename = options%iopath
+                options%iopath = ''
+            end if 
+            ! print *, pathpos
+            ! print *, options%iopath
+            ! print *, options%mesh_filename
+        end if 
+    end do 
 end if 
 return 
 end subroutine get_process_arguments
-    
 
 
 
@@ -54,23 +99,31 @@ type(options_data) :: options
 !Variables - Local 
 integer(in) :: ii,vcurr 
 integer(in) :: ncell,nedge,nvtx
+integer(in32) :: fh
 
 !Display
 if (options%csdisp) then
     write(*,'(A)') '--> importing mesh'
 end if
 
+!Check if file exists
+if (.NOT.file_exists(options%iopath//options%mesh_filename)) then 
+    write(*,'(A)') '    ** cannot locate mesh file: '//options%iopath//options%mesh_filename
+    options%status = 1
+    stop
+end if 
+
 !Import 
-open(11,file=options%iopath//'grid')
-read(11,*) ncell,nedge,nvtx
+open(newunit=fh,file=options%iopath//options%mesh_filename)
+read(fh,*) ncell,nedge,nvtx
 call allocate_mesh(mesh,ncell,nedge,nvtx)
 do ii=1,nedge
-    read(11,*) mesh%edge_1(ii),mesh%edge_2(ii),mesh%cell_left(ii),mesh%cell_right(ii)
+    read(fh,*) mesh%edge_1(ii),mesh%edge_2(ii),mesh%cell_left(ii),mesh%cell_right(ii)
 end do
 do ii=1,nvtx
-    read(11,*) vcurr,mesh%vtx_x(ii),mesh%vtx_y(ii)
+    read(fh,*) vcurr,mesh%vtx_x(ii),mesh%vtx_y(ii)
 end do
-close(11)
+close(fh)
 if (options%csdisp) then
     write(*,'(A,I0)') '    cells: ',ncell
     write(*,'(A,I0)') '    edges: ',nedge
@@ -81,6 +134,93 @@ end subroutine flow_import_mesh
 
 
 
+!Set default paths subroutine ===========================
+subroutine set_default_paths(options)
+implicit none 
+
+!Variables - Import
+type(options_data) :: options 
+
+!Set paths 
+options%optpath = 'io/'
+options%iopath = ''
+options%mesh_filename = 'grid'
+options%opt_filename = 'FLOW_options'
+return 
+end subroutine set_default_paths
+
+
+
+
+!Set default options subroutine =========================
+subroutine set_default_options(options)
+implicit none 
+
+!Variables - Import
+type(options_data) :: options 
+
+!Flow conditions  
+options%aoa = 0.0d0 
+options%machinf = 0.5d0 
+options%rhoinf = 1.225d0 
+options%tinf = 288.0d0 
+options%gamma = 1.403d0 
+options%R = 287.058
+
+!Numerical properties 
+options%ittlim_min = 100
+options%ittlim = 20000
+options%term_res = -8.0d0 
+options%cfl = 1.5d0 
+options%k2 = 1.0d0 
+options%k4 = 0.05d0 
+options%c2 = 1.0d0 
+options%sp = 0.0d0 
+options%nRKstage = 4
+allocate(options%RKstagediss_eval(4))
+options%RKstagediss_eval(1) = 1 
+options%RKstagediss_eval(2) = 0
+options%RKstagediss_eval(3) = 0
+options%RKstagediss_eval(4) = 0
+allocate(options%RKstagediss_apply(4))
+options%RKstagediss_apply(1) = 1
+options%RKstagediss_apply(2) = 1
+options%RKstagediss_apply(3) = 1
+options%RKstagediss_apply(4) = 1
+options%psNsmooth = 0
+options%ts_mode = 'local'
+options%damptsteps = .false.
+
+!Boundary condition properties 
+options%ff_bc_type = 'riemann'
+options%wall_bc_type = 'constant'
+options%mflux_bc_type = 'pressure'
+options%Mflux_relaxiter = 500
+options%Mflux_relax = 0.95d0 
+options%Mflux_toll = 0.005d0 
+options%backp_pratio = 0.8d0 
+options%force_fixed_pratio = .false.
+options%force_fixed_ff_ifof_state = .false.
+
+!General 
+options%init_state = 'freestream'
+options%num_threads = 2
+options%mpartition_type = 'prin_axis'
+options%avstencil_size = 50 
+options%csdisp = .true.
+options%pptoggle = .true.
+options%ffexporttoggle = .false.
+options%ffexport_scale = 'normalised'
+
+!Additional 
+options%evalMassflux = .false.
+options%massflux_niterav = 2000
+options%export_mesh_partitions = .false.
+return 
+end subroutine set_default_options
+
+
+
 !Import options subroutine =========================
 subroutine flow_import_options(options)
 implicit none 
@@ -88,117 +228,80 @@ implicit none
 !Variables - Import
 type(options_data) :: options 
 
-!Import 
-open(11,file=options%optpath//'FLOW_options.dat')
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%aoa
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%machinf
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%rhoinf
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%tinf
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%gamma
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%R 
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%ittlim_min
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%ittlim
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%term_res
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%cfl
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%k2
-read(11,*) options%k4
-read(11,*) options%c2
-read(11,*) options%sp
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%nRKstage
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%RKstagediss(1)
-read(11,*) options%RKstagediss(2)
-read(11,*) options%RKstagediss(3)
-read(11,*) options%RKstagediss(4)
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%psNsmooth
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%ts_mode
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%damptsteps
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%ff_bc_type
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%wall_bc_type
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%mflux_bc_type
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%Mflux_relaxiter
-read(11,*) options%Mflux_relax
-read(11,*) options%Mflux_toll
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%backp_pratio
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%force_fixed_pratio
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%force_fixed_ff_ifof_state
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%init_state
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%num_threads
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%avstencil_size
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%csdisp
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%pptoggle
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%ffexporttoggle
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%ffexport_scale
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) !skip
-read(11,*) options%evalMassflux
-read(11,*) options%massflux_niterav
+!Variables - Local
+integer(in32) :: fh
+
+!Check if file exists
+if (.NOT.file_exists(options%optpath//options%opt_filename)) then 
+    write(*,'(A)') '    ** cannot locate options file: '//options%optpath//options%opt_filename
+    options%status = 1
+    stop
+end if 
+
+!Open file 
+open(newunit=fh,file=options%optpath//options%opt_filename)
+
+!Flow conditions  
+call set_real_opt(options%aoa,fh,'aoa')
+call set_real_opt(options%machinf,fh,'mach')
+call set_real_opt(options%rhoinf,fh,'rho')
+call set_real_opt(options%tinf,fh,'temp')
+call set_real_opt(options%gamma,fh,'gamma')
+call set_real_opt(options%R,fh,'R')
+
+!Numerical properties 
+call set_int_opt(options%ittlim_min,fh,'iterlim_min')
+call set_int_opt(options%ittlim,fh,'iterlim')
+call set_real_opt(options%term_res,fh,'term_res')
+call set_real_opt(options%cfl,fh,'cfl')
+call set_real_opt(options%k2,fh,'k2')
+call set_real_opt(options%k4,fh,'k4')
+call set_real_opt(options%c2,fh,'c2')
+call set_real_opt(options%sp,fh,'sp')
+call set_int_opt(options%nRKstage,fh,'nRKstage')
+call set_int_opt_arr1(options%RKstagediss_eval,fh,'RKstagediss_eval')
+call set_int_opt_arr1(options%RKstagediss_apply,fh,'RKstagediss_apply')
+call set_int_opt(options%psNsmooth,fh,'npssmooth')
+call set_str_opt(options%ts_mode,fh,'ts_mode')
+call set_log_opt(options%damptsteps,fh,'damp_ts')
+
+!Boundary condition properties 
+call set_str_opt(options%ff_bc_type,fh,'ff_bc_type')
+if (options%ff_bc_type == 'riemann') then 
+    options%ff_bc_type = 'r'
+elseif (options%ff_bc_type == 'characteristic') then 
+    options%ff_bc_type = 'c'
+end if 
+call set_str_opt(options%wall_bc_type,fh,'wall_bc_type')
+if (options%wall_bc_type == 'constant') then 
+    options%wall_bc_type = 'c'
+elseif (options%wall_bc_type == 'linear') then 
+    options%wall_bc_type = 'l'
+end if 
+call set_str_opt(options%mflux_bc_type,fh,'mflux_bc_type')
+call set_int_opt(options%Mflux_relaxiter,fh,'mflux_bc_relaxiter')
+call set_real_opt(options%Mflux_relax,fh,'mflux_bc_relaxpar')
+call set_real_opt(options%Mflux_toll,fh,'mflux_bc_toll')
+call set_real_opt(options%backp_pratio,fh,'backp_pratio')
+call set_log_opt(options%force_fixed_pratio,fh,'force_fixed_pratio')
+call set_log_opt(options%force_fixed_ff_ifof_state,fh,'force_fixed_ff_ifof_state')
+
+!General 
+call set_str_opt(options%init_state,fh,'init_state')
+call set_int_opt(options%num_threads,fh,'num_threads')
+call set_str_opt(options%mpartition_type,fh,'mpartition_type')
+call set_int_opt(options%avstencil_size,fh,'avstencil_size')
+call set_log_opt(options%csdisp,fh,'cdisplay')
+call set_log_opt(options%pptoggle,fh,'postprocess')
+call set_log_opt(options%ffexporttoggle,fh,'export_flowfield')
+call set_str_opt(options%ffexport_scale,fh,'flowfield_export_scale')
+
+!Additional 
+call set_log_opt(options%evalMassflux,fh,'evalMassflux')
+call set_int_opt(options%massflux_niterav,fh,'massflux_niterav')
+call set_log_opt(options%export_mesh_partitions,fh,'export_mesh_partitions')
+
+!Close file 
 close(11)
 
 !Set error status
@@ -231,53 +334,11 @@ open(11,file=options%iopath//filename,status='unknown')
     write(11,'(A,A)') 'cl = ',real2F0_Xstring(fcoefs%cl_av,12_in)
     write(11,'(A,A)') 'cd = ',real2F0_Xstring(fcoefs%cd_av,12_in)
     write(11,'(A,A)') 'cm = ',real2F0_Xstring(fcoefs%cm_av,12_in)
-    write(11,'(A,A)') 'mflux = ',real2F0_Xstring(fcoefs%mflux_in,12_in)
+    write(11,'(A,A)') 'mflux = ',real2F0_Xstring(fcoefs%mflux_in_av,12_in)
     write(11,'(A,I0)') 'status = ',options%status
 close(11)
 return 
 end subroutine export_force_coefs
-
-
-
-
-!F0.X format with leading zero function =========================
-function real2F0_Xstring(val,X) result(str)
-
-!Result 
-character(len=:), allocatable :: str
-
-!Variables - Import 
-character(len=10) :: frmtI
-character(len=:), allocatable :: frmt,str_I
-integer(in) :: X,len_frmt,len_str
-real(dp) :: val
-
-!Set format descriptor
-write(frmtI,'(I0)') X
-len_frmt = len_trim(frmtI)
-allocate(character(len=len_frmt) :: frmt)
-frmt = frmtI(1:len_frmt)
-frmt = frmt//')'
-frmt = '(F0.'//frmt
-
-!Allocate initial character
-allocate(character(len=4*X) :: str_I)
-
-!Write data to return charachter
-write(str_I,frmt) val
-
-!Allocate return character
-len_str = len_trim(str_I)
-allocate(character(len=len_str) :: str)
-str = str_I(1:len_str)
-
-!Assign leading zero if required
-if (str(1:1) == '.') then 
-    str = '0'//str
-elseif (str(1:2) == '-.') then 
-    str = '-0.'//str(3:len_str)
-end if 
-end function real2F0_Xstring
 
 
 
@@ -347,6 +408,54 @@ write(fh,*) ( max(0,mesh%cell_right(i:min(i+nperline-1,mesh%nedge))),NEW_LINE('A
 close(fh)
 return 
 end subroutine saveVolPLT
+
+
+
+
+!Export TECPLOT mesh file with cell data subroutine =========================  
+subroutine write_cell_dataPLT(filename,volume_mesh,cell_datap)
+use ieee_arithmetic
+implicit none 
+
+
+!Variables - Import
+real(dp), dimension(:) :: cell_datap
+character(*), intent(in) :: filename
+type(mesh_data) :: volume_mesh
+
+!Variables - Local 
+integer(in) :: fh,i,nperline
+
+!Open file
+fh = 11
+open(fh,file=filename//'.plt',status='unknown')
+
+!TECPLOT formatting
+write(fh,'(A)',advance="no") 'VARIABLES="X" "Y" "data"'
+write(fh,*) 'ZONE T="CellData"'
+write(fh,'(A)',advance="no") 'VARLOCATION=([1,2]=NODAL,[3]=CELLCENTERED)'
+write(fh,*) 'ZONETYPE=FEPOLYGON'
+write(fh,'(A,I8)') ' Nodes=',volume_mesh%nvtx
+write(fh,'(A,I8)') ' Elements=',volume_mesh%ncell
+write(fh,'(A,I8)') ' Faces=',volume_mesh%nedge
+write(fh,*) 'NumConnectedBoundaryFaces=0 '
+write(fh,*) 'TotalNumBoundaryConnections=0 '
+
+! These loops are because tecplot has a maximum number of characters per line
+nperline = 100
+write(fh,*) ( volume_mesh%vtx_x(i:min(i+nperline-1,volume_mesh%nvtx)),NEW_LINE('A') , i=1,volume_mesh%nvtx,nperline )
+write(fh,*) ( volume_mesh%vtx_y(i:min(i+nperline-1,volume_mesh%nvtx)),NEW_LINE('A') , i=1,volume_mesh%nvtx,nperline )
+write(fh,*) ( cell_datap(i:min(i+nperline-1,volume_mesh%ncell)),NEW_LINE('A') , i=1,volume_mesh%ncell,nperline )
+do i=1,volume_mesh%nedge
+    write(fh,*) volume_mesh%edge_1(i),volume_mesh%edge_2(i)  
+end do
+write(fh,*) ( max(0,volume_mesh%cell_left(i:min(i+nperline-1,volume_mesh%nedge))),NEW_LINE('A') , i=1,volume_mesh%nedge,nperline )
+write(fh,*) ( max(0,volume_mesh%cell_right(i:min(i+nperline-1,volume_mesh%nedge))),NEW_LINE('A') , i=1,volume_mesh%nedge,nperline )
+
+!Close file
+close(fh)
+return 
+end subroutine write_cell_dataPLT
 
 
 

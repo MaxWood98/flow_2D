@@ -142,12 +142,19 @@ allocate(flowvars%v_outflow_t(mesh%nzone_outflow))
 allocate(flowvars%rho_outflow_t(mesh%nzone_outflow))
 if (.NOT.allocated(fcoefs%cl_stencil)) then 
     allocate(fcoefs%cl_stencil(options%avstencil_size))
+    fcoefs%cl_stencil(:) = 0.0d0 
 end if 
 if (.NOT.allocated(fcoefs%cd_stencil)) then 
     allocate(fcoefs%cd_stencil(options%avstencil_size))
+    fcoefs%cd_stencil(:) = 0.0d0 
 end if 
 if (.NOT.allocated(fcoefs%cm_stencil)) then 
     allocate(fcoefs%cm_stencil(options%avstencil_size))
+    fcoefs%cm_stencil(:) = 0.0d0 
+end if 
+if (.NOT.allocated(fcoefs%mflux_in_stencil)) then 
+    allocate(fcoefs%mflux_in_stencil(options%avstencil_size))
+    fcoefs%mflux_in_stencil(:) = 0.0d0 
 end if 
 return
 end subroutine allocate_flow_variables

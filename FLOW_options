@@ -1,0 +1,115 @@
+#Flow Options File (version 2.5.1)
+
+#=== Flow Conditions =============================
+#Angle of Incidence (deg)
+aoa = 0.0
+
+#Mach number (mach)
+mach = 0.95
+
+#=== Freestream Conditions =======================
+#Density (kg/m3) 
+rho = 1.225
+
+#Temperature (K) (273.15K = 0C)
+temp = 288.0
+
+#Ratio of specific heat constants (gamma)
+gamma = 1.403
+
+#Universal gas constant (R) (j/kg/K) 
+R = 287.058
+
+#=== Numerical Properties ========================
+#Minimum iteration limit 
+iterlim_min = 100
+
+#Maximum iteration limit
+iterlim = 20000
+
+#Termination residual (log10)
+term_res = -8.0
+
+#CFL number
+cfl = 1.5
+
+#Dissipation coefficients k2 k4 c2 sp
+k2 = 1.0
+k4 = 0.05
+c2 = 1.0
+sp = 0.0
+
+#Number of Runge-Kutta stages (3 or 4)
+nRKstage = 4
+
+#Runge-Kutta stage dissipation evaluation tags 1 2 3 4
+RKstagediss_eval = 1 0 0 0 
+
+#Runge-Kutta stage dissipation application tags 1 2 3 4
+RKstagediss_apply = 1 1 1 1
+
+#Number of pressure sensor smoothing iterations 
+npssmooth = 0
+
+#Timestep (local | global)
+ts_mode = local 
+
+#Damp cell timesteps to minimal adjacent 
+damp_ts = no 
+
+#=== Boundary Condition Properties ===============
+#Far field boundary condition type (riemann | characteristic)
+ff_bc_type = characteristic
+
+#Wall boundary condition type (constant | linear)
+wall_bc_type = constant 
+
+#Mass flux boundary condition type (presure | velocity)
+mflux_bc_type = pressure 
+
+#Mass flux boundary condition relaxation iterations, relaxation parameter and tollerance
+mflux_bc_relaxiter = 500
+mflux_bc_relaxpar = 0.95
+mflux_bc_toll = 0.005
+
+#Backpressure boundary condition pressure ratio
+backp_pratio = 0.8
+
+#Force a fixed pressure ratio between inflow and outflow 
+force_fixed_pratio = no 
+
+#Force fixed far field boundary condition inflow and outflow states
+force_fixed_ff_ifof_state = no 
+
+#=== General =====================================
+#Initialisation state (freestream | static | restart)
+init_state = freestream
+
+#Number of threads (power of two)
+num_threads = 4
+
+#Mesh partitioning method (prin_axis | flood)
+mpartition_type = prin_axis
+
+#Average flow property stencil size
+avstencil_size = 50
+
+#Toggle console display
+cdisplay = yes
+
+#Postprocess and export flow field 
+postprocess = yes 
+
+#Export raw flow field data
+export_flowfield = yes
+
+#Export normalised or real scaled flow field (normalised | real)
+flowfield_export_scale = normalised
+
+#=== Additional Outputs ==========================
+#Mass flux calculation toggle and averaging iterations
+evalMassflux = yes
+massflux_niterav = 1000
+
+#Export mesh partition zones 
+export_mesh_partitions = no

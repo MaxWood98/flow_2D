@@ -5,8 +5,9 @@
 		}
 	],
 	"settings": {
-		"fortran.linter.modOutput": "C:/Users/mw16116/OneDrive - University of Bristol/PhD/Flow2/obj",
+		// "fortran.linter.modOutput": "C:/Users/mw16116/OneDrive - University of Bristol/PhD/Flow2/obj",
 		// "fortran.linter.modOutput": "C:/Users/max/OneDrive - University of Bristol/PhD/Flow2/obj",
+		"fortran.linter.modOutput": "C:/Users/maxwo/OneDrive - University of Bristol/PhD/Flow2/obj",
 		"makefile.extensionOutputFolder": "./.vscode"
 	}
 }

@@ -1,8 +1,8 @@
 !Flow solver calculation module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 0.7.1
-!Updated: 19/09/23
+!Version: 0.7.4
+!Updated: 22/03/24
 
 !Boundary condition flags -------
 ! -> Wall = -1
@@ -17,8 +17,6 @@
 !Module
 module flow_calculation_mod
 use flow_io_mod
-! use flow_data_mod
-use flow_general_mod
 use flow_boundary_cond_mod
 contains 
 
@@ -79,25 +77,25 @@ flowvars%rho0inf = flowvars%rhoinf*(1.0d0 + 0.5d0*(flowvars%gam - 1.0d0)*flowvar
 flowvars%t0inf = flowvars%tinf*(1.0d0 + 0.5d0*(flowvars%gam - 1.0d0)*flowvars%machinf*flowvars%machinf)
 
 !Set initial flow primative variables 
-if (options%init_state == 'f') then !Freestream
+if (options%init_state == 'freestream') then !Freestream
     flowvars%rho(:) = flowvars%rhoinf
     flowvars%u(:) = flowvars%uinf
     flowvars%v(:) = flowvars%vinf
     flowvars%p(:) = flowvars%pinf
-    ! flowvars%e(:) = (flowvars%pinf/((flowvars%gam - 1.0d0)*flowvars%rhoinf)) + 0.5d0*flowvars%velinf*flowvars%velinf
-    flowvars%e(:) = (flowvars%pinf/(flowvars%gam - 1.0d0)) + 0.5d0*flowvars%rhoinf*flowvars%velinf*flowvars%velinf
+    flowvars%e(:) = (flowvars%pinf/((flowvars%gam - 1.0d0)*flowvars%rhoinf)) + 0.5d0*flowvars%velinf*flowvars%velinf
+    ! flowvars%e(:) = (flowvars%pinf/(flowvars%gam - 1.0d0)) + 0.5d0*flowvars%rhoinf*flowvars%velinf*flowvars%velinf
     flowvars%mach(:) = flowvars%machinf
     flowvars%cp(:) = ((flowvars%p(:)/flowvars%pinf) - 1.0d0)/(0.5d0*flowvars%gam*flowvars%machinf*flowvars%machinf)
-elseif (options%init_state == 's') then !Static 
+elseif (options%init_state == 'static') then !Static 
     flowvars%rho(:) = flowvars%rhoinf
     flowvars%u(:) = 0.0d0 
     flowvars%v(:) = 0.0d0 
     flowvars%p(:) = flowvars%pinf
-    ! flowvars%e(:) = (flowvars%pinf/((flowvars%gam - 1.0d0)*flowvars%rhoinf))
-    flowvars%e(:) = (flowvars%pinf/(flowvars%gam - 1.0d0))
+    flowvars%e(:) = (flowvars%pinf/((flowvars%gam - 1.0d0)*flowvars%rhoinf))
+    ! flowvars%e(:) = (flowvars%pinf/(flowvars%gam - 1.0d0))
     flowvars%mach(:) = 0.0d0 
     flowvars%cp(:) = ((flowvars%p(:)/flowvars%pinf) - 1.0d0)/(0.5d0*flowvars%gam*flowvars%machinf*flowvars%machinf)
-elseif (options%init_state == 'r') then !Restart 
+elseif (options%init_state == 'restart') then !Restart 
     call read_restart_file('flow2d_restart.dat',flowvars,mesh,options)
 else
     options%status = 3
@@ -114,6 +112,7 @@ flowvars%Winf(1) = flowvars%rhoinf
 flowvars%Winf(2) = flowvars%rhoinf*flowvars%uinf 
 flowvars%Winf(3) = flowvars%rhoinf*flowvars%vinf 
 flowvars%Winf(4) = (flowvars%pinf/(flowvars%gam - 1.0d0)*flowvars%rhoinf) + 0.5d0*flowvars%velinf*flowvars%velinf
+! flowvars%Winf(4) = (flowvars%pinf/(flowvars%gam - 1.0d0)) + 0.5d0*flowvars%rhoinf*flowvars%velinf*flowvars%velinf
 
 !Initialise average force coeficient stencils
 fcoefs%cl_stencil(:) = 0.0d0 
@@ -129,16 +128,16 @@ sosinf_AC = sqrt(options%gamma*options%R*options%tinf)
 
 !Display actual flow properties 
 if ((options%csdisp) .AND. (dispt == 1)) then
-    write(*,'(A)') '    Actual flow properties: '
-    write(*,'(A,F12.5)') '     pressure (Pa): ',pinf_AC
-    write(*,'(A,F12.5)') '     density (Kg/m^3): ',options%rhoinf
-    write(*,'(A,F12.5)') '     speed of sound (m/s): ',sosinf_AC
-    write(*,'(A,F12.5)') '     velocity (m/s): ',options%machinf*sosinf_AC
-    write(*,'(A)') '    Scaled flow properties: '
-    write(*,'(A,F12.5)') '     pressure : ',flowvars%pinf
-    write(*,'(A,F12.5)') '     density : ',flowvars%rhoinf
-    write(*,'(A,F12.5)') '     speed of sound : ',flowvars%cinf
-    write(*,'(A,F12.5)') '     velocity : ',flowvars%velinf
+    write(*,'(A)') '    Actual freestream flow properties: '
+    write(*,'(A,A,A)') '    {pressure (Pa): ',real2F0_Xstring(pinf_AC,6_in),'}'
+    write(*,'(A,A,A)') '    {density (Kg/m^3): ',real2F0_Xstring(options%rhoinf,6_in),'}' 
+    write(*,'(A,A,A)') '    {speed of sound (m/s): ',real2F0_Xstring(sosinf_AC,6_in),'}' 
+    write(*,'(A,A,A)') '    {velocity (m/s): ',real2F0_Xstring(options%machinf*sosinf_AC,6_in),'}' 
+    write(*,'(A)') '    Scaled freestream flow properties: '
+    write(*,'(A,A,A)') '    {pressure : ',real2F0_Xstring(flowvars%pinf,6_in),'}' 
+    write(*,'(A,A,A)') '    {density : ',real2F0_Xstring(flowvars%rhoinf,6_in),'}'
+    write(*,'(A,A,A)') '    {speed of sound : ',real2F0_Xstring(flowvars%cinf,6_in),'}'
+    write(*,'(A,A,A)') '    {velocity : ',real2F0_Xstring(flowvars%velinf,6_in),'}'
 end if 
 return
 end subroutine initialise_flow
@@ -224,8 +223,8 @@ type(flow_var_data) :: flowvars
 W(:,1) = flowvars%rho(:)
 W(:,2) = flowvars%rho(:)*flowvars%u(:)
 W(:,3) = flowvars%rho(:)*flowvars%v(:)
-! W(:,4) = flowvars%rho(:)*flowvars%e(:)
-W(:,4) = flowvars%e(:)
+W(:,4) = flowvars%rho(:)*flowvars%e(:)
+! W(:,4) = flowvars%e(:)
 return 
 end subroutine get_conservative_vars
 
@@ -249,22 +248,20 @@ real(dp) :: Vabs2,SoS
 nanflag = 0 
 do ii=1,ncell
     flowvars%rho(ii) = W(ii,1)
+    flowvars%u(ii) = W(ii,2)/flowvars%rho(ii)
+    flowvars%v(ii) = W(ii,3)/flowvars%rho(ii)
+    flowvars%e(ii) = W(ii,4)/W(ii,1)
+    Vabs2 = flowvars%u(ii)**2 + flowvars%v(ii)**2
+    flowvars%p(ii) = (flowvars%e(ii) - 0.5d0*Vabs2)*(flowvars%gam - 1.0d0)*W(ii,1)
+    SoS = sqrt(flowvars%gam*(flowvars%p(ii)/flowvars%rho(ii)))
+    flowvars%mach(ii) = sqrt(Vabs2)/SoS
+    flowvars%cp(ii) = ((flowvars%p(ii)/flowvars%pinf) - 1.0d0)/(0.5d0*flowvars%gam*flowvars%machinf*flowvars%machinf)
+    ! flowvars%cp(ii) = (flowvars%p(ii) - flowvars%pinf)/(0.5d0*flowvars%rhoinf*flowvars%velinf*flowvars%velinf)
     if (isnan(W(ii,1))) then
         nanflag = 1
         write(*,'(A)') '    nan rho'
         return
     end if
-    flowvars%u(ii) = W(ii,2)/W(ii,1)
-    flowvars%v(ii) = W(ii,3)/W(ii,1)
-    ! flowvars%e(ii) = W(ii,4)/W(ii,1)
-    flowvars%e(ii) = W(ii,4)
-    Vabs2 = flowvars%u(ii)**2 + flowvars%v(ii)**2
-    ! flowvars%p(ii) = (flowvars%e(ii) - 0.5d0*Vabs2)*(flowvars%gam - 1.0d0)*W(ii,1)
-    flowvars%p(ii) = (flowvars%e(ii) - 0.5d0*W(ii,1)*Vabs2)*(flowvars%gam - 1.0d0)
-    SoS = sqrt(flowvars%gam*(flowvars%p(ii)/flowvars%rho(ii)))
-    flowvars%mach(ii) = sqrt(Vabs2)/SoS
-    flowvars%cp(ii) = ((flowvars%p(ii)/flowvars%pinf) - 1.0d0)/(0.5d0*flowvars%gam*flowvars%machinf*flowvars%machinf)
-    ! flowvars%cp(ii) = (flowvars%p(ii) - flowvars%pinf)/(0.5d0*flowvars%rhoinf*flowvars%velinf*flowvars%velinf)
 end do 
 return
 end subroutine get_primative_vars
@@ -340,7 +337,7 @@ elseif (cl == -2) then !Far field --> enforce far field boundary conditions
             if (options%ff_bc_type == 'r') then 
                 call subsonic_inflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
             elseif (options%ff_bc_type == 'c') then 
-                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,1_in)
+                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,1_in,mesh,edge_idx)
             endif
         end if
     elseif (Vnorm .LT. 0.0d0) then !Outflow from cell right
@@ -350,7 +347,7 @@ elseif (cl == -2) then !Far field --> enforce far field boundary conditions
             if (options%ff_bc_type == 'r') then 
                 call subsonic_outflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
             elseif (options%ff_bc_type == 'c') then 
-                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,-1_in)
+                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,-1_in,mesh,edge_idx)
             end if 
         end if
     else !flow is parallel to the boundary (use outflow conditions)
@@ -360,7 +357,7 @@ elseif (cl == -2) then !Far field --> enforce far field boundary conditions
             if (options%ff_bc_type == 'r') then 
                 call subsonic_outflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh)
             elseif (options%ff_bc_type == 'c') then 
-                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,-1_in)
+                call subsonic_bc_char(Fleft,Gleft,cr,zr,flowvars,-1_in,mesh,edge_idx)
             end if 
         end if
     end if
@@ -387,11 +384,12 @@ elseif (cl == -6) then !Inflow --> enforce 'freestream' state inflow boundary co
     pedge = flowvars(zr)%p(cr)
 elseif (cl == -7) then !Outflow --> enforce back pressure outflow boundary condition
     call cell_flux(Fright,Gright,flowvars,cr,zr)
-    if (options%ff_bc_type == 'r') then 
-        call backpressure_outflow_bc_ri(Fleft,Gleft,flowvars,mesh,edge_idx,cr,zr)
-    elseif (options%ff_bc_type == 'c') then 
-        call backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,options,edge_idx,cr,zr)
-    end if 
+    ! if (options%ff_bc_type == 'r') then 
+    !     call backpressure_outflow_bc_ri(Fleft,Gleft,flowvars,mesh,edge_idx,cr,zr) !not working correctly
+    ! elseif (options%ff_bc_type == 'c') then 
+    !     call backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,options,edge_idx,cr,zr)
+    ! end if 
+    call backpressure_outflow_bc_c(Fleft,Gleft,flowvars,mesh,options,edge_idx,cr,zr)
     pedge = flowvars(zr)%p(cr)
 end if 
 
@@ -504,6 +502,12 @@ end if
 
 !Calculate edge flow spectral radius
 lamedge = (abs(mesh%edge_nx(edg_idx)*ue + mesh%edge_ny(edg_idx)*ve) + sose)*mesh%edgelen(edg_idx)
+! if (isnan(lamedge)) then 
+!     print *, ue,ve,sose,pr,rhor
+! end if 
+! if (pr < 0) then 
+!     print *, 'negp ',pr,sosr
+! end if 
 return 
 end subroutine edge_spectral_radius
 
@@ -511,13 +515,12 @@ end subroutine edge_spectral_radius
 
 
 !Edge pressure sensor calculation subroutine =========================
-subroutine edge_pressure_sensor(psensor_num,psensor_dnum,cl,cr,zl,zr,eidx,flowvars,mesh)
+subroutine edge_pressure_sensor(psensor_num,psensor_dnum,cl,cr,zl,zr,flowvars)
 implicit none 
 
 !Variables - Import
-integer(in) :: cl,cr,zl,zr,eidx
+integer(in) :: cl,cr,zl,zr
 real(dp) :: psensor_num,psensor_dnum
-type(mesh_data), dimension(:) :: mesh
 type(flow_var_data), dimension(:) :: flowvars
 
 !Variables - Local
@@ -525,10 +528,10 @@ real(dp) :: pl,pr
 
 !Calculate pressure sensor value
 if (cl .GT. 0) then !Internal 
-    pl = abs(flowvars(zl)%p(cl))
-    pr = abs(flowvars(zr)%p(cr))
-    psensor_num = (pr - pl)*mesh(zr)%edgelen(eidx)
-    psensor_dnum = (pr + pl)*0.5d0*(mesh(zl)%cell_elenint(cl) +  mesh(zr)%cell_elenint(cr))
+    pl = (flowvars(zl)%p(cl))
+    pr = (flowvars(zr)%p(cr))
+    psensor_num = (pr - pl)
+    psensor_dnum = (pr + pl)
 else !Other cells
     psensor_num = 0.0d0 
     psensor_dnum = 0.0d0 
@@ -742,26 +745,30 @@ if (cl .GT. 0) then !Internal cell
 
     !Calculate edge flow spectral radius
     call edge_spectral_radius(lamedge,mesh(zone),flowvars,edg_idx)
+    ! lamedge = 0.5d0*(mesh(zr)%specrad(cr) + mesh(zl)%specrad(cl))
 
     !4th order psi coefficient 
-    psi0 = sqrt(mesh(zr)%specrad(cr)/(4.0d0*lamedge))!**(2.0d0/3.0d0)
-    psi1 = sqrt(mesh(zl)%specrad(cl)/(4.0d0*lamedge))!**(2.0d0/3.0d0)
+    psi0 = sqrt(mesh(zr)%specrad(cr)/(4.0d0*lamedge))
+    psi1 = sqrt(mesh(zl)%specrad(cl)/(4.0d0*lamedge))
     psi01 = (4.0d0*(psi0*psi1))/(psi0 + psi1)
 
     !Cell edge quantity scaling values 
-    S2 = 2.0d0*(real(mesh(zl)%cell_nedgei(cl),dp) + real(mesh(zr)%cell_nedgei(cr),dp))/&
-               (real(mesh(zl)%cell_nedgei(cl),dp)*real(mesh(zr)%cell_nedgei(cr),dp))
+    ! S2 = 2.0d0*(real(mesh(zl)%cell_nedge(cl) + mesh(zr)%cell_nedge(cr),dp))/&
+    !            (real(mesh(zl)%cell_nedge(cl)*mesh(zr)%cell_nedge(cr),dp))
+    ! S4 = 0.25d0*(S2*S2)
+    S2 = 2.0d0*(real(mesh(zl)%cell_nedgei(cl) + mesh(zr)%cell_nedgei(cr),dp))/&
+               (real(mesh(zl)%cell_nedgei(cl)*mesh(zr)%cell_nedgei(cr),dp))
     S4 = 0.25d0*(S2*S2)
     ! S2 = mesh(zr)%edgelen(edg_idx)/(0.5d0*(mesh(zr)%cell_elenint(cr) + mesh(zl)%cell_elenint(cl)))
     ! S4 = 0.25d0*(S2*S2)
 
-    !Pressure sensor and base second order dissipation
-    si = 0.5d0*abs(mesh(zl)%psensor(cl) + mesh(zr)%psensor(cr)) !+ options%sp
+    !Pressure sensor
+    si = 0.5d0*abs(mesh(zl)%psensor(cl) + mesh(zr)%psensor(cr))
 
     !Construct dissipation coeficients for this edge
     dk2 = options%k2*si*S2  
     dk4 = max(0.0d0,(options%k4 - options%c2*dK2))*S4
-    dk2 = dk2 + options%sp !dk4*options%sp
+    dk2 = dk2 + options%sp !Add any base second order dissipation
     dpsilam = lamedge*psi01
 else !Other cell
     dk2 = 0.0d0 
@@ -807,7 +814,7 @@ type(coeficient_data) :: fcoefs
 
 !Variables - Local 
 integer(in) :: stins
-real(dp) :: cl_sd,cd_sd,cm_sd
+real(dp) :: cl_sd,cd_sd,cm_sd,mflx_sd
 
 !Stencil index
 stins = mod(iter-1,options%avstencil_size) + 1
@@ -816,16 +823,19 @@ stins = mod(iter-1,options%avstencil_size) + 1
 fcoefs%cl_stencil(stins) = fcoefs%cl
 fcoefs%cd_stencil(stins) = fcoefs%cd
 fcoefs%cm_stencil(stins) = fcoefs%cm
+fcoefs%mflux_in_stencil(stins) = fcoefs%mflux_in
 
 !Average components
 if (iter .LT. options%avstencil_size) then
     fcoefs%cl_av = sum(fcoefs%cl_stencil(1:iter))/real(iter,dp)
     fcoefs%cd_av = sum(fcoefs%cd_stencil(1:iter))/real(iter,dp)
     fcoefs%cm_av = sum(fcoefs%cm_stencil(1:iter))/real(iter,dp)
+    fcoefs%mflux_in_av = sum(fcoefs%mflux_in_stencil(1:iter))/real(iter,dp)
 else
     fcoefs%cl_av = sum(fcoefs%cl_stencil(:))/real(options%avstencil_size,dp)
     fcoefs%cd_av = sum(fcoefs%cd_stencil(:))/real(options%avstencil_size,dp)
     fcoefs%cm_av = sum(fcoefs%cm_stencil(:))/real(options%avstencil_size,dp)
+    fcoefs%mflux_in_av = sum(fcoefs%mflux_in_stencil(:))/real(options%avstencil_size,dp)
 end if
 
 !Standard deviation of each coefficient and the average of all  
@@ -833,12 +843,14 @@ if (iter .LT. options%avstencil_size) then
     cl_sd = sqrt((1.0d0/real(iter,dp))*sum((fcoefs%cl_stencil(1:iter) - fcoefs%cl_av)**2))
     cd_sd = sqrt((1.0d0/real(iter,dp))*sum((fcoefs%cd_stencil(1:iter) - fcoefs%cd_av)**2))
     cm_sd = sqrt((1.0d0/real(iter,dp))*sum((fcoefs%cm_stencil(1:iter) - fcoefs%cm_av)**2))
+    mflx_sd = sqrt((1.0d0/real(iter,dp))*sum((fcoefs%mflux_in_stencil(1:iter) - fcoefs%mflux_in_av)**2))
 else
     cl_sd = sqrt((1.0d0/real(options%avstencil_size,dp))*sum((fcoefs%cl_stencil(:) - fcoefs%cl_av)**2))
     cd_sd = sqrt((1.0d0/real(options%avstencil_size,dp))*sum((fcoefs%cd_stencil(:) - fcoefs%cd_av)**2))
     cm_sd = sqrt((1.0d0/real(options%avstencil_size,dp))*sum((fcoefs%cm_stencil(:) - fcoefs%cm_av)**2))
+    mflx_sd = sqrt((1.0d0/real(options%avstencil_size,dp))*sum((fcoefs%mflux_in_stencil(:) - fcoefs%mflux_in_av)**2))
 end if
-fcoefs%force_sd = (cl_sd + cd_sd + cm_sd)/3.0d0 
+fcoefs%force_sd = (cl_sd + cd_sd + cm_sd + mflx_sd)/4.0d0 
 return 
 end subroutine average_fcoefficients
 

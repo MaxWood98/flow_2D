@@ -1,8 +1,8 @@
 !Flow Solver Main Program
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 2.0.0
-!Updated: 14/08/23
+!Version: 2.5.1
+!Updated: 22/03/24
 
 !Main
 program flow
@@ -19,18 +19,24 @@ type(mesh_data) :: mesh
 type(flow_var_data) :: flowvars,flowvarsAV
 type(coeficient_data) :: fcoefs
 
+!Det default paths 
+call set_default_paths(options)
+
+!Set default options 
+call set_default_options(options)
+
 !Get command line arguments 
 call get_process_arguments(options)
 
-!Settings import 
+!Import options
 call flow_import_options(options)
 
 !Display
 if (options%csdisp) then
     write(*,*)
     write(*,*)'+--------------------------------------------+'
-    write(*,*)'|            2D Euler Flow Solver            |'
-    write(*,*)'|         Version 2.4.0 || 19/09/2023        |'
+    write(*,*)'|        Flow2D - 2D Euler Flow Solver       |'
+    write(*,*)'|         Version 2.5.1 || 22/03/2024        |'
     write(*,*)'|                 Max Wood                   |'
     write(*,*)'|           University of Bristol            |'
     write(*,*)'|    Department of Aerospace Engineering     |'
@@ -62,10 +68,10 @@ if (options%status == 0) then
 end if 
 
 !Scale flow field
-if (options%ffexport_scale == 's') then 
+if (options%ffexport_scale == 'real') then 
     call set_flowvars_scale(flowvars,options)
     call set_flowvars_scale(flowvarsAV,options)
-elseif (options%ffexport_scale == 'n') then 
+elseif (options%ffexport_scale == 'normalised') then 
     !do nothing 
 else
     write(*,'(A)') '--> ** invalid export scaling selected - defaulting to normalised **'

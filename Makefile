@@ -2,9 +2,7 @@
 # buildargs = -O0 -Wall -fbounds-check -ffpe-trap=underflow,zero,invalid -fopenmp
 # buildargs = -O0 -Wall -fbounds-check -ffpe-trap=inexact,denormal -fopenmp
 # buildargs = -O0 -Wall -fbounds-check -ffpe-trap=denormal -fopenmp 
-# buildargs = -O0 -Wall -fbounds-check -ffpe-trap=denormal -fopenmp  
 buildargs = -O2 -fopt-info-optimized=$@_opt.dat -fopenmp
-# buildargs = -O2 -fopt-info-optimized=$@_opt.dat
 
 #build settings
 buildsettings = -J obj 
@@ -16,6 +14,7 @@ OBJDIR = obj/
 OBJS = $(addprefix $(OBJDIR), \
 		flow_data.o\
 		flow_general.o\
+		io_utilities_module.o\
 		flow_io.o\
 		flow_mesh.o\
 		flow_boundaries.o\
