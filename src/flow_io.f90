@@ -142,7 +142,7 @@ implicit none
 type(options_data) :: options 
 
 !Set paths 
-options%optpath = 'io/'
+options%optpath = ''
 options%iopath = ''
 options%mesh_filename = 'grid'
 options%opt_filename = 'FLOW_options'
