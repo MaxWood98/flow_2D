@@ -1,8 +1,8 @@
 !Flow solver boundary conditions subroutines module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering 
-!Version: 0.5.6
-!Updated: 22/03/24
+!Version: 0.5.8
+!Updated: 26/03/24
 
 !Boundary condition flags -------
 ! -> Wall = -1
@@ -16,7 +16,7 @@
 
 !Module
 module flow_boundary_cond_mod
-use flow_data_mod
+use flow_general_mod
 contains
 
 
@@ -453,52 +453,64 @@ type(flow_var_data), dimension(:) :: flowvars
 type(mesh_data), dimension(:) :: mesh
 
 !Variables - Local
-real(dp) :: uin,vin,rhoin,pin,uinf,vinf,rhoinf,pinf,cin,cinf
-real(dp) :: ub,vb,rhob,pb,eb
-real(dp) :: fdeltasi(4,1),fdeltasbn(4,1),fdeltasbt(4,1),fchars(4,1)
-real(dp) :: chm(4,4),chmi(4,4)
-real(dp) :: uinf_n,vinf_n,uinf_t,vinf_t,uin_n,vin_n,uin_t,vin_t,vndp,nx,ny
+real(dp) :: rhoin,pin,rhoinf,pinf,cin,cinf
+real(dp) :: ub,vb,rhob,pb,eb,nx,ny
+real(dp) :: vel_in(2),vel_inf(2),vel_in_n(2),vel_inf_n(2),vel_b(2),vel_b_n(2)
+real(dp) :: basis_bx(2),basis_by(2),basis_ax(2),basis_ay(2)
+real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
+real(dp) :: chm(4,4),chmi(4,4),Mb2a(2,2),Ma2b(2,2)
 
-!Edge normal vector
-nx = mesh(zr)%edge_nx(edge_idx)
-ny = mesh(zr)%edge_ny(edge_idx)
+!Cell normal vector with positive dot product with the velocity vector 
+if (if_of == 1) then !inflow
+    nx = mesh(zr)%edge_nx(edge_idx)
+    ny = mesh(zr)%edge_ny(edge_idx)
+elseif (if_of == -1) then !outflow
+    nx = -mesh(zr)%edge_nx(edge_idx)
+    ny = -mesh(zr)%edge_ny(edge_idx)
+end if 
+
+!Define global coordiante system basis 
+basis_bx(1) = 1.0d0 
+basis_bx(2) = 0.0d0 
+basis_by(1) = 0.0d0 
+basis_by(2) = 1.0d0 
+
+!Define edge normal coordiante system basis 
+basis_ax(1) = nx
+basis_ax(2) = ny
+basis_ay(1) = mesh(zr)%edge_dx(edge_idx)
+basis_ay(2) = mesh(zr)%edge_dy(edge_idx)
+basis_ay(:) = basis_ay(:)/norm2(basis_ay(:))
+
+!Get change of basis from global to edge normal coordinate system 
+call get_basis_change(Mb2a,Ma2b,basis_bx,basis_by,basis_ax,basis_ay)
 
 !Local primative vector
 rhoin = flowvars(zr)%rho(cr) 
-uin = flowvars(zr)%u(cr)
-vin = flowvars(zr)%v(cr) 
+vel_in(1) = flowvars(zr)%u(cr)
+vel_in(2) = flowvars(zr)%v(cr) 
 pin = flowvars(zr)%p(cr)
 cin = sqrt(flowvars(zr)%gam*(pin/rhoin))
 
-!Normal and tangent velocity
-vndp = uin*nx + vin*ny
-uin_n = vndp*nx
-vin_n = vndp*ny
-uin_t = uin - uin_n
-vin_t = vin - vin_n
-
 !Freestream primative vector
 rhoinf = flowvars(zr)%rhoinf
-uinf = flowvars(zr)%uinf
-vinf = flowvars(zr)%vinf
+vel_inf(1) = flowvars(zr)%uinf
+vel_inf(2) = flowvars(zr)%vinf
 pinf = flowvars(zr)%pinf
 cinf = flowvars(zr)%cinf
 
-!Normal and tangent velocity
-vndp = uinf*nx + vinf*ny
-uinf_n = vndp*nx
-vinf_n = vndp*ny
-uinf_t = uinf - uinf_n
-vinf_t = vinf - vinf_n
+!Change velocities to edge normal basis
+vel_in_n = change_basis(Mb2a,vel_in)
+vel_inf_n = change_basis(Mb2a,vel_inf)
 
 !Evaluate characteristic matrix
-call charmat(chm,chmi,rhoinf,cinf)
+! call charmat(chm,chmi,rhoinf,cinf)
+call charmat(chm,chmi,rhoin,cin)
 
-!Apply boundary condition in normal direction ------------
 !Evaluate flow deltas from freestream
 fdeltasi(1,1) = rhoin - rhoinf
-fdeltasi(2,1) = uin_n - uinf_n 
-fdeltasi(3,1) = vin_n - vinf_n 
+fdeltasi(2,1) = vel_in_n(1) - vel_inf_n(1) 
+fdeltasi(3,1) = vel_in_n(2) - vel_inf_n(2)  
 fdeltasi(4,1) = pin - pinf
 
 !Evaluate characteristics
@@ -512,37 +524,20 @@ elseif (if_of == -1) then !outflow
 end if 
 
 !Calculate boundary deltas
-fdeltasbn = matmul(chmi,fchars)
-!Apply boundary condition in normal direction ------------
+fdeltasb = matmul(chmi,fchars)
 
-!Apply boundary condition in tangent direction ------------
-!Evaluate flow deltas from freestream
-fdeltasi(1,1) = 0.0d0 !rhoin - rhoinf
-fdeltasi(2,1) = uin_t - uinf_t 
-fdeltasi(3,1) = vin_t - vinf_t 
-fdeltasi(4,1) = 0.0d0 !pin - pinf
+!Evaluate boundary velocity
+vel_b_n(1) = fdeltasb(2,1) + vel_inf_n(1) 
+vel_b_n(2) = fdeltasb(3,1) + vel_inf_n(2) 
 
-!Evaluate characteristics
-fchars = matmul(chm,fdeltasi)
-
-!Apply boundary condition 
-if (if_of == 1) then !inflow
-    fchars(1:3,1) = 0.0d0 
-elseif (if_of == -1) then !outflow
-    fchars(4,1) = 0.0d0 
-end if 
-
-!Calculate boundary deltas
-fdeltasbt = matmul(chmi,fchars)
-!Apply boundary condition in tangent direction ------------
-
-!Evaluate boundary velocity carrying though tangential component
-ub = fdeltasbn(2,1) + fdeltasbt(2,1) + uinf_n + uinf_t
-vb = fdeltasbn(3,1) + fdeltasbt(3,1) + vinf_n + vinf_t
+!Change boundary velocity to the global basis
+vel_b = change_basis(Ma2b,vel_b_n)
+ub = vel_b(1)
+vb = vel_b(2)
 
 !Evaluate boundary primatives 
-rhob = fdeltasbn(1,1) + rhoinf
-pb = fdeltasbn(4,1) + pinf
+rhob = fdeltasb(1,1) + rhoinf
+pb = fdeltasb(4,1) + pinf
 eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
 ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
 
@@ -573,25 +568,40 @@ real(dp) :: rho,c
 real(dp) :: chm(4,4),chmi(4,4)
 
 !Base matrix 
-chm(:,:) = 0.0d0 
-chm(1,1)= -c*c
-chm(1,4)= 1.0d0
-chm(2,3)= rho*c
-chm(3,2)= rho*c
-chm(3,4)= 1.0d0 
-chm(4,2)= -rho*c
-chm(4,4)= 1.0d0
+chm(1,1) = -c*c
+chm(1,2) = 0.0d0 
+chm(1,3) = 0.0d0 
+chm(1,4) = 1.0d0
+chm(2,1) = 0.0d0 
+chm(2,2) = 0.0d0 
+chm(2,3) = rho*c
+chm(2,4) = 0.0d0 
+chm(3,1) = 0.0d0 
+chm(3,2) = rho*c
+chm(3,3) = 0.0d0 
+chm(3,4) = 1.0d0 
+chm(4,1) = 0.0d0 
+chm(4,2) = -rho*c
+chm(4,3) = 0.0d0 
+chm(4,4) = 1.0d0
 
 !Inverse matrix 
-chmi(:,:) = 0.0d0 
-chmi(1,1)= -1.0d0/(c*c)
-chmi(1,3)= 1.0d0/(2.0d0*c*c)
-chmi(1,4)= 1.0d0/(2.0d0*c*c)
-chmi(2,3)= 1.0d0/(2.0d0*rho*c)
-chmi(2,4)= -1.0d0/(2.0d0*rho*c)
-chmi(3,2)= 1.0d0/(rho*C)
-chmi(4,3)= 0.5d0
-chmi(4,4)= 0.5d0
+chmi(1,1) = -1.0d0/(c*c)
+chmi(1,2) = 0.0d0 
+chmi(1,3) = 1.0d0/(2.0d0*c*c)
+chmi(1,4) = 1.0d0/(2.0d0*c*c)
+chmi(2,1) = 0.0d0 
+chmi(2,2) = 0.0d0 
+chmi(2,3) = 1.0d0/(2.0d0*rho*c)
+chmi(2,4) = -1.0d0/(2.0d0*rho*c)
+chmi(3,1) = 0.0d0 
+chmi(3,2) = 1.0d0/(rho*C)
+chmi(3,3) = 0.0d0 
+chmi(3,4) = 0.0d0 
+chmi(4,1) = 0.0d0 
+chmi(4,2) = 0.0d0 
+chmi(4,3) = 0.5d0
+chmi(4,4) = 0.5d0
 return 
 end subroutine charmat
 
@@ -612,39 +622,56 @@ type(flow_var_data), dimension(:) :: flowvars
 type(mesh_data), dimension(:) :: mesh
 
 !Variables - Local
-real(dp) :: rhoin,uin,vin,pin,cin,H,velinN,velin,velinf
-real(dp) :: Rm,a,b,c,cbp,cbm,cb,pwall
-real(dp) :: Mb,pb,rhob,ub,vb,eb,uninf,vninf,tinf,rhoinf,pinf
-real(dp) :: unin,vnin,utin,vtin,nx,ny
-real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
-real(dp) :: chm(4,4),chmi(4,4)
+real(dp) :: rhoin,pin,rhoinf,pinf,cin,tinf,vnorm_in
+real(dp) :: ub,vb,rhob,pb,eb,Mb,nx,ny,H,Rm
+real(dp) :: a,b,c,cbp,cbm,cb,vninf,velinf
+real(dp) :: vel_in(2),vel_in_n(2),vel_b(2),vel_b_n(2)
+real(dp) :: basis_bx(2),basis_by(2),basis_ax(2),basis_ay(2)
+real(dp) :: Mb2a(2,2),Ma2b(2,2)
 
-!Cell normal vector with positive dot product with the velocity vector 
-nx = mesh(zr)%edge_nx(edge_idx)
-ny = mesh(zr)%edge_ny(edge_idx)
-
-!Internal primative vector
+!Local primative vector
 rhoin = flowvars(zr)%rho(cr) 
-uin = flowvars(zr)%u(cr)
-vin = flowvars(zr)%v(cr) 
+vel_in(1) = flowvars(zr)%u(cr)
+vel_in(2) = flowvars(zr)%v(cr) 
 pin = flowvars(zr)%p(cr)
 cin = sqrt(flowvars(zr)%gam*(pin/rhoin))
 
-!Internal velocity and wall normal velocity
-velin = sqrt(uin*uin + vin*vin)
-velinN = uin*mesh(zr)%edge_nx(edge_idx) + vin*mesh(zr)%edge_ny(edge_idx)
+!Boundary normal velocity
+vnorm_in = vel_in(1)*mesh(zr)%edge_nx(edge_idx) + vel_in(2)*mesh(zr)%edge_ny(edge_idx)
 
-!Internal boundary normal and tangential velocity
-unin = mesh(zr)%edge_nx(edge_idx)*velinN
-vnin = mesh(zr)%edge_ny(edge_idx)*velinN
-utin = uin - unin
-vtin = vin - vnin
+!Cell normal vector with positive dot product with the velocity vector 
+if (vnorm_in .GE. 0.0d0) then !inflow
+    nx = mesh(zr)%edge_nx(edge_idx)
+    ny = mesh(zr)%edge_ny(edge_idx)
+else !backflow 
+    nx = -mesh(zr)%edge_nx(edge_idx)
+    ny = -mesh(zr)%edge_ny(edge_idx)
+end if 
+
+!Define global coordiante system basis 
+basis_bx(1) = 1.0d0 
+basis_bx(2) = 0.0d0 
+basis_by(1) = 0.0d0 
+basis_by(2) = 1.0d0 
+
+!Define edge normal coordiante system basis 
+basis_ax(1) = nx
+basis_ax(2) = ny
+basis_ay(1) = mesh(zr)%edge_dx(edge_idx)
+basis_ay(2) = mesh(zr)%edge_dy(edge_idx)
+basis_ay(:) = basis_ay(:)/norm2(basis_ay(:))
+
+!Get change of basis from global to edge normal coordinate system 
+call get_basis_change(Mb2a,Ma2b,basis_bx,basis_by,basis_ax,basis_ay)
+
+!Change internal velocity to edge normal basis
+vel_in_n = change_basis(Mb2a,vel_in)
 
 !Enthalpy (from interior properties)
-H = ((cin*cin)/(flowvars(zr)%gam - 1.0d0)) + 0.5d0*(uin*uin + vin*vin) 
+H = ((cin*cin)/(flowvars(zr)%gam - 1.0d0)) + 0.5d0*(vel_in_n(1)*vel_in_n(1) + vel_in_n(2)*vel_in_n(2)) 
 
 !Reimann invariant - 
-Rm = -velin + (2.0d0*cin/(flowvars(zr)%gam - 1.0d0))
+Rm = -vel_in_n(1) + (2.0d0*cin/(flowvars(zr)%gam - 1.0d0))
 
 !Solve for boundary speed of sound 
 a = 1.0d0 + (2.0d0/(flowvars(zr)%gam - 1.0d0))
@@ -654,77 +681,50 @@ cbp = (-b + sqrt(b*b - 4.0d0*a*c))/(2.0d0*a)
 cbm = (-b - sqrt(b*b - 4.0d0*a*c))/(2.0d0*a)
 cb = max(cbp,cbm)
 
-!Boundary normal velocity and mach number (from internal)
-velinf = (2.0d0*cb/(flowvars(zr)%gam - 1.0d0)) - Rm
-uninf = velinf*mesh(zr)%edge_nx(edge_idx)
-vninf = velinf*mesh(zr)%edge_ny(edge_idx)
+!Solve for boundary normal velocity and mach number 
+vninf = (2.0d0*cb/(flowvars(zr)%gam - 1.0d0)) - Rm
+velinf = sqrt(vninf**2 + vel_in_n(2)**2)
 Mb = velinf/cb
 
-!Boundary normal velocity and mach number (from external)
-! velinf = sqrt(flowvars(zr)%uinf*flowvars(zr)%uinf + flowvars(zr)%vinf*flowvars(zr)%vinf)
-! uninf = mesh(zr)%edge_nx(edge_idx)*velinf
-! vninf = mesh(zr)%edge_ny(edge_idx)*velinf
-! Mb = sqrt(uninf*uninf + vninf*vninf)/cb
+!Boundary pressure temperature and density
+pinf = flowvars(zr)%p0inf/(((1.0d0 + 0.5d0*(flowvars(zr)%gam - 1.0d0)*Mb*Mb)**&
+(flowvars(zr)%gam/(flowvars(zr)%gam - 1.0d0))))
+tinf = flowvars(zr)%t0inf/(1.0d0 + 0.5d0*(flowvars(zr)%gam - 1.0d0)*Mb*Mb)
+rhoinf = pinf/(tinf*flowvars(zr)%R) 
 
-!Cases
-if (velinN .LT. 0.0d0) then !Backflow -> set as solid wall boundary 
-    call wall_flux_bc_Cextrp(pwall,Fleft,Gleft,flowvars,cr,zr)
-else !Normal inflow -> switch based on mach number
-    if (Mb .GE. 1.0d0) then !Supersonic inflow
-        call supersonic_inflow_bc_ri(Fleft,Gleft,cr,zr,edge_idx,flowvars,mesh) 
-    else !Subsonic inflow
+!Evaluate boundary velocity
+vel_b_n(1) = vninf
+vel_b_n(2) = vel_in_n(2)
 
-        !Boundary pressure temperature and density
-        pinf = flowvars(zr)%p0inf/(((1.0d0 + 0.5d0*(flowvars(zr)%gam - 1.0d0)*Mb*Mb)**&
-        (flowvars(zr)%gam/(flowvars(zr)%gam - 1.0d0))))
-        tinf = flowvars(zr)%t0inf/(1.0d0 + 0.5d0*(flowvars(zr)%gam - 1.0d0)*Mb*Mb)
-        rhoinf = pinf/(tinf*flowvars(zr)%R) 
+!Change boundary velocity to the global basis
+vel_b = change_basis(Ma2b,vel_b_n)
+ub = vel_b(1)
+vb = vel_b(2)
 
-        !Evaluate flow deltas from 'freestream'
-        fdeltasi(1,1) = rhoin - rhoinf
-        fdeltasi(2,1) = unin - uninf 
-        fdeltasi(3,1) = vnin - vninf 
-        fdeltasi(4,1) = pin - pinf
+!Evaluate boundary primatives 
+rhob = rhoinf
+pb = pinf
+eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
 
-        !Evaluate characteristic matrix
-        call charmat(chm,chmi,rhoinf,cb)
+!Accumulate inflow mass flux properties
+flowvars(zr)%mflux_in = flowvars(zr)%mflux_in + rhob*vel_b_n(1)*mesh(zr)%edgelen(edge_idx)
+flowvars(zr)%time_in = flowvars(zr)%time_in + mesh(zr)%deltaT(cr)!*mesh(zr)%cell_vol(cr)
 
-        !Evaluate characteristics
-        fchars = matmul(chm,fdeltasi)
+!Accumulate number of cells 
+flowvars(zr)%cvol_in = flowvars(zr)%cvol_in + 1.0d0 !mesh(zr)%cell_vol(cr)
 
-        !Apply inflow boundary condition 
-        fchars(1:3,1) = 0.0d0 
+!Construct boundary fluxes
+Fleft(1) = rhob*ub
+Fleft(2) = rhob*ub*ub + pb
+Fleft(3) = rhob*ub*vb
+Fleft(4) = rhob*ub*eb + pb*ub
+! Fleft(4) = ub*(eb + pb)
 
-        !Calculate boundary deltas
-        fdeltasb = matmul(chmi,fchars)
-
-        !Evaluate boundary velocity carrying though internal tangential component
-        ub = fdeltasb(2,1) + uninf + utin
-        vb = fdeltasb(3,1) + vninf + vtin
-
-        !Evaluate boundary primatives 
-        rhob = fdeltasb(1,1) + rhoinf
-        pb = fdeltasb(4,1) + pinf
-        eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
-        ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
-
-        !Accumulate inflow mass flux 
-        flowvars(zr)%mflux_in = flowvars(zr)%mflux_in + rhob*(ub*nx + vb*ny)*mesh(zr)%edgelen(edge_idx)
-
-        !Construct boundary fluxes
-        Fleft(1) = rhob*ub
-        Fleft(2) = rhob*ub*ub + pb
-        Fleft(3) = rhob*ub*vb
-        Fleft(4) = rhob*ub*eb + pb*ub
-        ! Fleft(4) = ub*(eb + pb)
-        
-        Gleft(1) = rhob*vb
-        Gleft(2) = rhob*vb*ub
-        Gleft(3) = rhob*vb*vb + pb
-        Gleft(4) = rhob*vb*eb + pb*vb
-        ! Gleft(4) = vb*(eb + pb)
-    end if
-end if
+Gleft(1) = rhob*vb
+Gleft(2) = rhob*vb*ub
+Gleft(3) = rhob*vb*vb + pb
+Gleft(4) = rhob*vb*eb + pb*vb
+! Gleft(4) = vb*(eb + pb)
 return 
 end subroutine stagnation_inflow_bc
 
@@ -732,58 +732,64 @@ end subroutine stagnation_inflow_bc
 
 
 !Freestream inflow boundary condition subroutine =========================
-subroutine freestream_inflow_c(Fleft,Gleft,cr,zr,flowvars,mesh,options,edgidx)
+subroutine freestream_inflow_c(Fleft,Gleft,cr,zr,flowvars,mesh,options,edge_idx)
 implicit none 
 
 !Variables - Import
-integer(in) :: cr,zr,edgidx
+integer(in) :: cr,zr,edge_idx
 real(dp), dimension(:) :: Fleft,Gleft
 type(mesh_data), dimension(:) :: mesh
 type(flow_var_data), dimension(:) :: flowvars
 type(options_data) :: options 
 
 !Variables - Local
-real(dp) :: nx,ny,pwall
-real(dp) :: uin,vin,rhoin,pin,uinf,vinf,rhoinf,pinf,vnorm_in,cin,cinf
-real(dp) :: ub,vb,rhob,pb,eb
-real(dp) :: fdeltasi(4,1),fdeltasbn(4,1),fdeltasbt(4,1),fchars(4,1)
-real(dp) :: chm(4,4),chmi(4,4)
-real(dp) :: uinf_n,vinf_n,uinf_t,vinf_t,uin_n,vin_n,uin_t,vin_t,vndp
+real(dp) :: rhoin,pin,rhoinf,pinf,cin,cinf,vnorm_in
+real(dp) :: ub,vb,rhob,pb,eb,pwall,nx,ny
+real(dp) :: vel_in(2),vel_inf(2),vel_in_n(2),vel_inf_n(2),vel_b(2),vel_b_n(2)
+real(dp) :: basis_bx(2),basis_by(2),basis_ax(2),basis_ay(2)
+real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
+real(dp) :: chm(4,4),chmi(4,4),Mb2a(2,2),Ma2b(2,2)
 
 !Cell normal vector with positive dot product with the velocity vector 
-nx = mesh(zr)%edge_nx(edgidx)
-ny = mesh(zr)%edge_ny(edgidx)
+nx = mesh(zr)%edge_nx(edge_idx)
+ny = mesh(zr)%edge_ny(edge_idx)
+
+!Define global coordiante system basis 
+basis_bx(1) = 1.0d0 
+basis_bx(2) = 0.0d0 
+basis_by(1) = 0.0d0 
+basis_by(2) = 1.0d0 
+
+!Define edge normal coordiante system basis 
+basis_ax(1) = nx
+basis_ax(2) = ny
+basis_ay(1) = mesh(zr)%edge_dx(edge_idx)
+basis_ay(2) = mesh(zr)%edge_dy(edge_idx)
+basis_ay(:) = basis_ay(:)/norm2(basis_ay(:))
+
+!Get change of basis from global to edge normal coordinate system 
+call get_basis_change(Mb2a,Ma2b,basis_bx,basis_by,basis_ax,basis_ay)
 
 !Local primative vector
 rhoin = flowvars(zr)%rho(cr) 
-uin = flowvars(zr)%u(cr)
-vin = flowvars(zr)%v(cr) 
+vel_in(1) = flowvars(zr)%u(cr)
+vel_in(2) = flowvars(zr)%v(cr) 
 pin = flowvars(zr)%p(cr)
 cin = sqrt(flowvars(zr)%gam*(pin/rhoin))
 
-!Normal and tangent velocity
-vndp = uin*nx + vin*ny
-uin_n = vndp*nx
-vin_n = vndp*ny
-uin_t = uin - uin_n
-vin_t = vin - vin_n
-
 !Freestream primative vector
 rhoinf = flowvars(zr)%rhoinf
-uinf = flowvars(zr)%uinf
-vinf = flowvars(zr)%vinf
+vel_inf(1) = flowvars(zr)%uinf
+vel_inf(2) = flowvars(zr)%vinf
 pinf = flowvars(zr)%pinf
 cinf = flowvars(zr)%cinf
 
-!Normal and tangent velocity
-vndp = uinf*nx + vinf*ny
-uinf_n = vndp*nx
-vinf_n = vndp*ny
-uinf_t = uinf - uinf_n
-vinf_t = vinf - vinf_n
+!Change velocities to edge normal basis
+vel_in_n = change_basis(Mb2a,vel_in)
+vel_inf_n = change_basis(Mb2a,vel_inf)
 
-!Surface normal velocity
-vnorm_in = uin*nx + vin*ny
+!Boundary normal velocity
+vnorm_in = vel_in(1)*mesh(zr)%edge_nx(edge_idx) + vel_in(2)*mesh(zr)%edge_ny(edge_idx)
 
 !Switch on sign of normal velocity
 if (vnorm_in .LT. 0.0d0) then !backflow so default to wall condition
@@ -792,57 +798,46 @@ else
 
     !Evaluate characteristic matrix
     call charmat(chm,chmi,rhoinf,cinf)
+    ! call charmat(chm,chmi,rhoin,cin)
 
-    !Apply boundary condition in normal direction ------------
     !Evaluate flow deltas from freestream
     fdeltasi(1,1) = rhoin - rhoinf
-    fdeltasi(2,1) = uin_n - uinf_n 
-    fdeltasi(3,1) = vin_n - vinf_n 
+    fdeltasi(2,1) = vel_in_n(1) - vel_inf_n(1) 
+    fdeltasi(3,1) = vel_in_n(2) - vel_inf_n(2)  
     fdeltasi(4,1) = pin - pinf
-    
-    !Evaluate characteristics
-    fchars = matmul(chm,fdeltasi)
-    
-    !Apply inflow boundary condition 
-    fchars(1:3,1) = 0.0d0 
-    
-    !Calculate boundary deltas
-    fdeltasbn = matmul(chmi,fchars)
-    !Apply boundary condition in normal direction ------------
-    
-    !Apply boundary condition in tangent direction ------------
-    !Evaluate flow deltas from freestream
-    fdeltasi(1,1) = 0.0d0 !rhoin - rhoinf
-    fdeltasi(2,1) = uin_t - uinf_t 
-    fdeltasi(3,1) = vin_t - vinf_t 
-    fdeltasi(4,1) = 0.0d0 !pin - pinf
-    
-    !Evaluate characteristics
-    fchars = matmul(chm,fdeltasi)
-    
-    !Apply inflow boundary condition 
-    fchars(1:3,1) = 0.0d0  
-    
-    !Calculate boundary deltas
-    fdeltasbt = matmul(chmi,fchars)
-    !Apply boundary condition in tangent direction ------------
 
-    !Evaluate boundary velocity carrying though tangential component
-    ub = fdeltasbn(2,1) + fdeltasbt(2,1) + uinf_n + uinf_t
-    vb = fdeltasbn(3,1) + fdeltasbt(3,1) + vinf_n + vinf_t
+    !Evaluate characteristics
+    fchars = matmul(chm,fdeltasi)
+
+    !Apply boundary condition (inflow)
+    fchars(1:3,1) = 0.0d0
+    ! fchars(1:3,1) = 0.1d0*fchars(1:3,1) 
+    
+    !Calculate boundary deltas
+    fdeltasb = matmul(chmi,fchars)
+
+    !Evaluate boundary velocity
+    vel_b_n(1) = fdeltasb(2,1) + vel_inf_n(1) 
+    vel_b_n(2) = fdeltasb(3,1) + vel_inf_n(2) 
+
+    !Change boundary velocity to the global basis
+    vel_b = change_basis(Ma2b,vel_b_n)
+    ub = vel_b(1)
+    vb = vel_b(2)
 
     !Evaluate boundary primatives 
-    rhob = fdeltasbn(1,1) + rhoinf
+    rhob = fdeltasb(1,1) + rhoinf
     if (options%force_fixed_pratio) then 
         pb = pinf
     else
-        pb = fdeltasbn(4,1) + pinf
+        pb = fdeltasb(4,1) + pinf
     end if 
     eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
     ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
 
-    !Accumulate inflow mass flux 
-    flowvars(zr)%mflux_in = flowvars(zr)%mflux_in + rhob*(ub*nx + vb*ny)*mesh(zr)%edgelen(edgidx)
+    !Accumulate inflow mass flux properties
+    flowvars(zr)%mflux_in = flowvars(zr)%mflux_in + rhob*vel_b_n(1)*mesh(zr)%edgelen(edge_idx)
+    flowvars(zr)%time_in = flowvars(zr)%time_in + mesh(zr)%deltaT(cr)!*mesh(zr)%cell_vol(cr)
 
     !Construct boundary fluxes
     Fleft(1) = rhob*ub
@@ -857,6 +852,9 @@ else
     Gleft(4) = rhob*vb*eb + pb*vb
     ! Gleft(4) = vb*(eb + pb)
 end if 
+
+!Accumulate number of cells 
+flowvars(zr)%cvol_in = flowvars(zr)%cvol_in + 1.0d0 !mesh(zr)%cell_vol(cr)
 return 
 end subroutine freestream_inflow_c
 
@@ -1256,29 +1254,55 @@ type(options_data) :: options
 
 !Variables - Local
 integer(in) :: zof
-real(dp) :: rhoin,uin,vin,pin,cin,tin,Machin,velin
-real(dp) :: pb,rhob,ub,vb,eb,pwall
-real(dp) :: uinf,vinf,rhoinf,pinf,cinf,nx,ny
-real(dp) :: uinf_n,vinf_n,uinf_t,vinf_t,uin_n,vin_n,uin_t,vin_t,vndp
-real(dp) :: fdeltasi(4,1),fdeltasbn(4,1),fdeltasbt(4,1),fchars(4,1)
-real(dp) :: chm(4,4),chmi(4,4)
+real(dp) :: rhoin,pin,rhoinf,pinf,tin,cin,Machin,cinf,vnorm_in
+real(dp) :: ub,vb,rhob,pb,eb,nx,ny
+real(dp) :: vel_in(2),vel_in_n(2),vel_inf_n(2),vel_b(2),vel_b_n(2)
+real(dp) :: basis_bx(2),basis_by(2),basis_ax(2),basis_ay(2)
+real(dp) :: fdeltasi(4,1),fdeltasb(4,1),fchars(4,1)
+real(dp) :: chm(4,4),chmi(4,4),Mb2a(2,2),Ma2b(2,2)
 
 !Outflow zone of this edge
 zof = mesh(zr)%outflow_zone(edge_idx)
 
-!Edge normal vector
-nx = mesh(zr)%edge_nx(edge_idx)
-ny = mesh(zr)%edge_ny(edge_idx)
-
-!Internal primative vector
+!Local primative vector
 rhoin = flowvars(zr)%rho(cr) 
-uin = flowvars(zr)%u(cr)
-vin = flowvars(zr)%v(cr) 
+vel_in(1) = flowvars(zr)%u(cr)
+vel_in(2) = flowvars(zr)%v(cr) 
 pin = flowvars(zr)%p(cr)
-velin = sqrt(uin*uin + vin*vin)
 cin = sqrt(flowvars(zr)%gam*(pin/rhoin))
-Machin = velin/cin
 tin = pin/(rhoin*flowvars(zr)%R)
+
+!Boundary normal velocity
+vnorm_in = vel_in(1)*mesh(zr)%edge_nx(edge_idx) + vel_in(2)*mesh(zr)%edge_ny(edge_idx)
+
+!Cell normal vector with positive dot product with the velocity vector 
+if (vnorm_in .GE. 0.0d0) then !backflow
+    nx = mesh(zr)%edge_nx(edge_idx)
+    ny = mesh(zr)%edge_ny(edge_idx)
+else !outflow 
+    nx = -mesh(zr)%edge_nx(edge_idx)
+    ny = -mesh(zr)%edge_ny(edge_idx)
+end if 
+
+!Define global coordiante system basis 
+basis_bx(1) = 1.0d0 
+basis_bx(2) = 0.0d0 
+basis_by(1) = 0.0d0 
+basis_by(2) = 1.0d0 
+
+!Define edge normal coordiante system basis 
+basis_ax(1) = nx
+basis_ax(2) = ny
+basis_ay(1) = mesh(zr)%edge_dx(edge_idx)
+basis_ay(2) = mesh(zr)%edge_dy(edge_idx)
+basis_ay(:) = basis_ay(:)/norm2(basis_ay(:))
+
+!Get change of basis from global to edge normal coordinate system 
+call get_basis_change(Mb2a,Ma2b,basis_bx,basis_by,basis_ax,basis_ay)
+
+!Change internal velocity to edge normal basis
+vel_in_n = change_basis(Mb2a,vel_in)
+Machin = norm2(vel_in_n)/cin
 
 !Set downstream pressure
 if (Machin .GE. 1.0d0) then 
@@ -1287,112 +1311,90 @@ else
     pinf = flowvars(zr)%backp_pset
 end if 
 
-!Normal and tangent velocity
-vndp = uin*nx + vin*ny
-uin_n = vndp*nx
-vin_n = vndp*ny
-uin_t = uin - uin_n
-vin_t = vin - vin_n
+!Apply boundary condition 
+if (Machin .LT. 1.0d0) then !subsonic 
 
-!Set condition 
-if ((uin*mesh(zr)%edge_nx(edge_idx) + vin*mesh(zr)%edge_ny(edge_idx)) .GT. 0.0d0) then !inflow -> wall condition
-    call wall_flux_bc_Cextrp(pwall,Fleft,Gleft,flowvars,cr,zr)
-else !outflow -> pressure condition 
-
-    ! !Boundary primatives (average outflow)
-    ! uinf = flowvars(zr)%u_outflow(zof)
-    ! vinf = flowvars(zr)%v_outflow(zof)
-    ! rhoinf = flowvars(zr)%rho_outflow(zof)
-    ! cinf = sqrt(flowvars(zr)%gam*(pinf/rhoinf))
-
-    !Boundary primatives (local)
-    uinf = flowvars(zr)%u(cr)
-    vinf = flowvars(zr)%v(cr)
+    !Freestream primative vector (in edge normal basis)
     rhoinf = pinf/(tin*flowvars(zr)%R)
     cinf = sqrt(flowvars(zr)%gam*(pinf/rhoinf))
+    vel_inf_n(:) = vel_in_n(:)
 
-    !Normal and tangent velocity
-    vndp = uinf*nx + vinf*ny
-    uinf_n = vndp*nx
-    vinf_n = vndp*ny
-    uinf_t = uinf - uinf_n
-    vinf_t = vinf - vinf_n
-
-    !Toggle subsonic/supersonic condition 
-    if (Machin .LT. 1.0d0) then !subsonic 
-
-        !Evaluate characteristic matrix
-        call charmat(chm,chmi,rhoinf,cinf)
-
-        !Apply boundary condition in normal direction ------------
-        !Evaluate flow deltas from freestream
-        fdeltasi(1,1) = rhoin - rhoinf
-        fdeltasi(2,1) = uin_n - uinf_n 
-        fdeltasi(3,1) = vin_n - vinf_n 
-        fdeltasi(4,1) = pin - pinf
-        
-        !Evaluate characteristics
-        fchars = matmul(chm,fdeltasi)
-        
-        !Apply outflow boundary condition 
-        fchars(4,1) = 0.0d0 
-        
-        !Calculate boundary deltas
-        fdeltasbn = matmul(chmi,fchars)
-        !Apply boundary condition in normal direction ------------
-        
-        !Apply boundary condition in tangent direction ------------
-        !Evaluate flow deltas from freestream
-        fdeltasi(1,1) = 0.0d0 !rhoin - rhoinf
-        fdeltasi(2,1) = uin_t - uinf_t 
-        fdeltasi(3,1) = vin_t - vinf_t 
-        fdeltasi(4,1) = 0.0d0 !pin - pinf
-        
-        !Evaluate characteristics
-        fchars = matmul(chm,fdeltasi)
-        
-        !Apply outflow boundary condition 
-        fchars(4,1) = 0.0d0 
-        
-        !Calculate boundary deltas
-        fdeltasbt = matmul(chmi,fchars)
-        !Apply boundary condition in tangent direction ------------
-
-        !Evaluate boundary velocity carrying though tangential component
-        ub = fdeltasbn(2,1) + fdeltasbt(2,1) + uinf_n + uinf_t
-        vb = fdeltasbn(3,1) + fdeltasbt(3,1) + vinf_n + vinf_t
-
-        !Evaluate boundary primatives 
-        rhob = fdeltasbn(1,1) + rhoin
-        if (options%force_fixed_pratio) then 
-            pb = pinf
-        else
-            pb = fdeltasbn(4,1) + pinf
-        end if 
-        eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
-        ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
-    else !supersonic 
-        ub = uin 
-        vb = vin 
-        pb = pin
-        rhob = rhoin 
-        eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
-        ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
+    !If backflow then set the edge normal velocity to zero 
+    if (vnorm_in .GE. 0.0d0) then !backflow
+        vel_inf_n(1) = 0.0d0 
+        ! vel_inf_n(1) = -vel_inf_n(1)
     end if 
 
-    !Construct boundary fluxes
-    Fleft(1) = rhob*ub
-    Fleft(2) = rhob*ub*ub + pb
-    Fleft(3) = rhob*ub*vb
-    Fleft(4) = rhob*ub*eb + pb*ub
-    ! Fleft(4) = ub*(eb + pb)
-    
-    Gleft(1) = rhob*vb
-    Gleft(2) = rhob*vb*ub
-    Gleft(3) = rhob*vb*vb + pb
-    Gleft(4) = rhob*vb*eb + pb*vb
-    ! Gleft(4) = vb*(eb + pb)
+    !Evaluate characteristic matrix
+    ! call charmat(chm,chmi,rhoinf,cinf)
+    call charmat(chm,chmi,rhoin,cin)
+
+    !Evaluate flow deltas from freestream
+    fdeltasi(1,1) = rhoin - rhoinf
+    fdeltasi(2,1) = vel_in_n(1) - vel_inf_n(1) 
+    fdeltasi(3,1) = vel_in_n(2) - vel_inf_n(2)  
+    fdeltasi(4,1) = pin - pinf
+
+    !Evaluate characteristics
+    fchars = matmul(chm,fdeltasi)
+
+    !Apply boundary condition
+    if (vnorm_in .GE. 0.0d0) then !backflow
+        fchars(1:3,1) = 0.0d0 
+        ! fchars(1:3,1) = -0.1d0*fchars(1:3,1) 
+    else !outflow 
+        fchars(4,1) = 0.0d0
+        ! fchars(4,1) = -0.1d0*fchars(4,1)
+    end if 
+
+    !Calculate boundary deltas
+    fdeltasb = matmul(chmi,fchars)
+
+    !Evaluate boundary velocity
+    vel_b_n(1) = fdeltasb(2,1) + vel_inf_n(1) 
+    vel_b_n(2) = fdeltasb(3,1) + vel_inf_n(2) 
+
+    !If backflow then set the edge normal velocity to zero 
+    if (vnorm_in .GE. 0.0d0) then !backflow
+        vel_b_n(1) = 0.0d0 
+        ! vel_b_n(2) = 0.0d0 
+    end if 
+
+    !Change boundary velocity to the global basis
+    vel_b = change_basis(Ma2b,vel_b_n)
+    ub = vel_b(1)
+    vb = vel_b(2)
+
+    !Evaluate boundary primatives 
+    rhob = fdeltasb(1,1) + rhoinf
+    if (options%force_fixed_pratio) then 
+        pb = pinf
+    else
+        pb = fdeltasb(4,1) + pinf
+    end if 
+    eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
+    ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
+else !supersonic 
+    ub = vel_in(1) 
+    vb = vel_in(2)
+    pb = pin
+    rhob = rhoin 
+    eb = (pb/((flowvars(zr)%gam - 1.0d0)*rhob)) + 0.5d0*(ub**2 + vb**2)
+    ! eb = (pb/((flowvars(zr)%gam - 1.0d0))) + 0.5d0*rhob*(ub**2 + vb**2)
 end if 
+
+!Construct boundary fluxes
+Fleft(1) = rhob*ub
+Fleft(2) = rhob*ub*ub + pb
+Fleft(3) = rhob*ub*vb
+Fleft(4) = rhob*ub*eb + pb*ub
+! Fleft(4) = ub*(eb + pb)
+
+Gleft(1) = rhob*vb
+Gleft(2) = rhob*vb*ub
+Gleft(3) = rhob*vb*vb + pb
+Gleft(4) = rhob*vb*eb + pb*vb
+! Gleft(4) = vb*(eb + pb)
 return 
 end subroutine backpressure_outflow_bc_c
 

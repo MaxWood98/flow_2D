@@ -1,8 +1,8 @@
 !Flow solver mesh subroutines module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering 
-!Version: 0.5.7
-!Updated: 20/03/24
+!Version: 0.5.8
+!Updated: 26/03/24
 
 !Module
 module flow_mesh_mod
@@ -47,7 +47,7 @@ do ii=1,mesh%nedge
         return 
     end if
 
-    !Edge volume contribution
+    !Edge volume contribution 
     vol_edge = 0.5d0*(mesh%vtx_x(mesh%edge_1(ii))*mesh%vtx_y(mesh%edge_2(ii)) - &
                       mesh%vtx_x(mesh%edge_2(ii))*mesh%vtx_y(mesh%edge_1(ii)))
     if (mesh%cell_left(ii) .GT. 0) then
@@ -97,7 +97,13 @@ do ii=1,mesh%nedge
     if (mesh%cell_right(ii) .GT. 0) then
         mesh%cell_nedge(mesh%cell_right(ii)) = mesh%cell_nedge(mesh%cell_right(ii)) + 1
     end if
-    if ((mesh%cell_left(ii) .GT. 0) .AND. (mesh%cell_right(ii) .GT. 0)) then
+    ! if ((mesh%cell_left(ii) .GT. 0) .AND. (mesh%cell_right(ii) .GT. 0)) then
+    !     mesh%cell_nedgei(mesh%cell_left(ii)) = mesh%cell_nedgei(mesh%cell_left(ii)) + 1
+    !     mesh%cell_nedgei(mesh%cell_right(ii)) = mesh%cell_nedgei(mesh%cell_right(ii)) + 1
+    !     mesh%cell_elenint(mesh%cell_left(ii)) = mesh%cell_elenint(mesh%cell_left(ii)) + mesh%edgelen(ii)
+    !     mesh%cell_elenint(mesh%cell_right(ii)) = mesh%cell_elenint(mesh%cell_right(ii)) + mesh%edgelen(ii)
+    ! end if 
+    if ((mesh%cell_left(ii) .NE. -1) .AND. (mesh%cell_right(ii) .NE. -1)) then
         mesh%cell_nedgei(mesh%cell_left(ii)) = mesh%cell_nedgei(mesh%cell_left(ii)) + 1
         mesh%cell_nedgei(mesh%cell_right(ii)) = mesh%cell_nedgei(mesh%cell_right(ii)) + 1
         mesh%cell_elenint(mesh%cell_left(ii)) = mesh%cell_elenint(mesh%cell_left(ii)) + mesh%edgelen(ii)

@@ -43,7 +43,7 @@ type options_data
     integer(in) :: ittlim,ittlim_min,avstencil_size,num_threads,nRKstage,psNsmooth
     integer(in) :: status,Mflux_relaxiter,massflux_niterav
     integer(in), dimension(:), allocatable :: RKstagediss_eval,RKstagediss_apply
-    real(dp) :: term_res,aoa,aoa_rad,cfl,k2,c2,k4,sp
+    real(dp) :: term_res,aoa,aoa_rad,cfl,k2,c2,k4,sp,massflux_iterstartfrac
     real(dp) :: rhoinf,tinf,machinf,gamma,R,Mflux_relax,Mflux_toll,backp_pratio
 end type options_data
 
@@ -51,7 +51,7 @@ end type options_data
 type flow_var_data
     integer(in) :: res_conv
     real(dp) :: Winf(4)
-    real(dp) :: uinf,vinf,velinf,t0inf,p0inf,rho0inf,mflow_in,A_in,A_out,mflux_in
+    real(dp) :: uinf,vinf,velinf,t0inf,p0inf,rho0inf,mflow_in,A_in,A_out,mflux_in,time_in,cvol_in
     real(dp) :: pinf,cinf,rhoinf,tinf,machinf
     real(dp) :: mflux_pset,mflux_pset0,backp_pset
     real(dp) :: rho_res,force_res,R,gam,vnset_of,mflux_error

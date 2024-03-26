@@ -224,54 +224,56 @@ end subroutine set_RK_coeficients
 
 
 
-!Parallel cell data transfer subroutines ========================= ** execute in OMP single only!!!!!!!! **
-subroutine push_to_par_transfer_1D(par_transfer,dat2add,cell_map) !Push 1D
+!Construct change of basis matrix subroutine =========================
+subroutine get_basis_change(Mb2a,Ma2b,basis_bx,basis_by,basis_ax,basis_ay)
 implicit none 
 
 !Variables - Import
-integer(in), dimension(:,:) :: cell_map
-real(dp), dimension(:) :: par_transfer,dat2add
+real(dp) :: basis_bx(2),basis_by(2),basis_ax(2),basis_ay(2)
+real(dp) :: Mb2a(2,2),Ma2b(2,2)
 
-!Accumulate from thread to transfer array
-par_transfer(cell_map(:,2)) = par_transfer(cell_map(:,2)) + dat2add(cell_map(:,1))
+!Variables - Local 
+real(dp) :: bx_ax,bx_ay,by_ax,by_ay,nxa,nya,det
+
+!Basis a magnitudes 
+nxa = norm2(basis_ax)
+nya = norm2(basis_ay)
+
+!Evaluate basis change from b -> a
+bx_ax = dot_product(basis_bx,basis_ax)/nxa
+bx_ay = dot_product(basis_bx,basis_ay)/nya
+by_ax = dot_product(basis_by,basis_ax)/nxa
+by_ay = dot_product(basis_by,basis_ay)/nya
+Mb2a(1,1) = bx_ax
+Mb2a(2,1) = bx_ay
+Mb2a(1,2) = by_ax
+Mb2a(2,2) = by_ay
+
+!Evaluate basis change from a -> b
+det = Mb2a(1,1)*Mb2a(2,2) - Mb2a(1,2)*Mb2a(2,1)
+det = 1.0d0/det
+Ma2b(1,1) = Mb2a(2,2)*det
+Ma2b(2,1) = -Mb2a(2,1)*det
+Ma2b(1,2) = -Mb2a(1,2)*det
+Ma2b(2,2) = Mb2a(1,1)*det 
 return 
-end subroutine push_to_par_transfer_1D
+end subroutine get_basis_change
 
-subroutine pull_from_par_transfer_1D(par_transfer,dat2take,cell_map) !Pull 1D
-implicit none 
+
+
+!Change basis function =========================
+function change_basis(M,vec_b0) result(vec_b1)
+implicit none
 
 !Variables - Import
-integer(in), dimension(:,:) :: cell_map
-real(dp), dimension(:) :: par_transfer,dat2take
+real(dp) :: vec_b0(2),vec_b1(2)
+real(dp) :: M(2,2)
 
-!Accumulate from thread to transfer array
-dat2take(cell_map(:,1)) = par_transfer(cell_map(:,2))
+!Evaluate
+vec_b1(1) = M(1,1)*vec_b0(1) + M(1,2)*vec_b0(2)
+vec_b1(2) = M(2,1)*vec_b0(1) + M(2,2)*vec_b0(2)
 return 
-end subroutine pull_from_par_transfer_1D
-
-subroutine push_to_par_transfer_2D(par_transfer,dat2add,cell_map) !Push 2D
-implicit none 
-
-!Variables - Import
-integer(in), dimension(:,:) :: cell_map
-real(dp), dimension(:,:) :: par_transfer,dat2add
-
-!Accumulate from thread to transfer array
-par_transfer(cell_map(:,2),:) = par_transfer(cell_map(:,2),:) + dat2add(cell_map(:,1),:)
-return 
-end subroutine push_to_par_transfer_2D
-
-subroutine pull_from_par_transfer_2D(par_transfer,dat2take,cell_map) !Pull 2D
-implicit none 
-
-!Variables - Import
-integer(in), dimension(:,:) :: cell_map
-real(dp), dimension(:,:) :: par_transfer,dat2take
-
-!Accumulate from thread to transfer array
-dat2take(cell_map(:,1),:) = par_transfer(cell_map(:,2),:)
-return 
-end subroutine pull_from_par_transfer_2D
+end function change_basis
 
 
 end module flow_general_mod

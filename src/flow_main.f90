@@ -1,8 +1,8 @@
 !Flow Solver Main Program
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 2.5.1
-!Updated: 22/03/24
+!Version: 2.5.2
+!Updated: 23/03/24
 
 !Main
 program flow
@@ -36,7 +36,7 @@ if (options%csdisp) then
     write(*,*)
     write(*,*)'+--------------------------------------------+'
     write(*,*)'|        Flow2D - 2D Euler Flow Solver       |'
-    write(*,*)'|         Version 2.5.1 || 22/03/2024        |'
+    write(*,*)'|         Version 2.6.1 || 26/03/2024        |'
     write(*,*)'|                 Max Wood                   |'
     write(*,*)'|           University of Bristol            |'
     write(*,*)'|    Department of Aerospace Engineering     |'

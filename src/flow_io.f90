@@ -215,6 +215,7 @@ options%ffexport_scale = 'normalised'
 !Additional 
 options%evalMassflux = .false.
 options%massflux_niterav = 2000
+options%massflux_iterstartfrac = 0.5d0 
 options%export_mesh_partitions = .false.
 return 
 end subroutine set_default_options
@@ -299,6 +300,7 @@ call set_str_opt(options%ffexport_scale,fh,'flowfield_export_scale')
 !Additional 
 call set_log_opt(options%evalMassflux,fh,'evalMassflux')
 call set_int_opt(options%massflux_niterav,fh,'massflux_niterav')
+call set_real_opt(options%massflux_iterstartfrac,fh,'massflux_iterstartfrac')
 call set_log_opt(options%export_mesh_partitions,fh,'export_mesh_partitions')
 
 !Close file 

@@ -2,8 +2,8 @@
 !Max Wood - mw16116@bristol.ac.uk 
 !Univeristy of Bristol - Department of Aerospace Engineering
 
-!Version 2.1
-!Updated 20-03-2024
+!Version 2.2
+!Updated 24-03-2024
 
 !Module 
 module io_utilities
@@ -515,25 +515,31 @@ real(dp) :: val
 write(frmtI,'(I0)') X
 frmt = '(F0.'//trim(frmtI)//')'
 
-!Find length of result string 
-if (abs(val) .LT. 1.0d0) then 
-    len_str = 1
+!Format
+if (isnan(val)) then 
+    str = 'nan'
 else
-    len_str = floor(log10(abs(val))) + 1
-end if 
-len_str = len_str + X + 2
 
-!Write to return string 
-allocate(character(len=len_str) :: str)
-write(str,trim(frmt)) val
-str = trim(str)
+    !Find length of result string 
+    if (abs(val) .LT. 1.0d0) then 
+        len_str = 1
+    else
+        len_str = floor(log10(abs(val))) + 1
+    end if 
+    len_str = len_str + X + 2
 
-!Assign leading zero if required
-if (str(1:1) == '.') then 
-    str = '0'//trim(str)
-elseif (str(1:2) == '-.') then 
-    len_str = len_trim(str)
-    str = '-0.'//str(3:len_str)
+    !Write to return string 
+    allocate(character(len=len_str) :: str)
+    write(str,trim(frmt)) val
+    str = trim(str)
+
+    !Assign leading zero if required
+    if (str(1:1) == '.') then 
+        str = '0'//trim(str)
+    elseif (str(1:2) == '-.') then 
+        len_str = len_trim(str)
+        str = '-0.'//str(3:len_str)
+    end if 
 end if 
 return 
 end function real2F0_Xstring

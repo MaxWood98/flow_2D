@@ -1,11 +1,11 @@
-#Flow Options File (version 2.5.1)
+#Flow Options File (version 2.6.1)
 
 #=== Flow Conditions =============================
 #Angle of Incidence (deg)
 aoa = 0.0
 
 #Mach number (mach)
-mach = 0.95
+mach = 0.25
 
 #=== Freestream Conditions =======================
 #Density (kg/m3) 
@@ -34,7 +34,7 @@ term_res = -8.0
 cfl = 1.5
 
 #Dissipation coefficients k2 k4 c2 sp
-k2 = 1.0
+k2 = 0.5
 k4 = 0.05
 c2 = 1.0
 sp = 0.0
@@ -92,7 +92,7 @@ num_threads = 4
 mpartition_type = prin_axis
 
 #Average flow property stencil size
-avstencil_size = 50
+avstencil_size = 100
 
 #Toggle console display
 cdisplay = yes
@@ -101,15 +101,16 @@ cdisplay = yes
 postprocess = yes 
 
 #Export raw flow field data
-export_flowfield = yes
+export_flowfield = no
 
 #Export normalised or real scaled flow field (normalised | real)
 flowfield_export_scale = normalised
 
 #=== Additional Outputs ==========================
-#Mass flux calculation toggle and averaging iterations
+#Mass flux calculation toggle, averaging iterations, and total evaluation start iteration as fraction of the convergence iteration
 evalMassflux = yes
-massflux_niterav = 1000
+massflux_niterav = 2000
+massflux_iterstartfrac = 0.5
 
 #Export mesh partition zones 
 export_mesh_partitions = no

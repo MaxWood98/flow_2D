@@ -1,8 +1,8 @@
 !Flow solver calculation module
 !Max Wood (mw16116@bristol.ac.uk)
 !University of Bristol - Department of Aerospace Engineering
-!Version: 0.7.4
-!Updated: 22/03/24
+!Version: 0.7.5
+!Updated: 26/03/24
 
 !Boundary condition flags -------
 ! -> Wall = -1
@@ -761,6 +761,8 @@ if (cl .GT. 0) then !Internal cell
     S4 = 0.25d0*(S2*S2)
     ! S2 = mesh(zr)%edgelen(edg_idx)/(0.5d0*(mesh(zr)%cell_elenint(cr) + mesh(zl)%cell_elenint(cl)))
     ! S4 = 0.25d0*(S2*S2)
+    ! S2 = 1.0d0 
+    ! S4 = 0.25d0 
 
     !Pressure sensor
     si = 0.5d0*abs(mesh(zl)%psensor(cl) + mesh(zr)%psensor(cr))
